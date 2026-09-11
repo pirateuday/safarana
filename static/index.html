@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartRoute — AI Multi-Agent Trip Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- Header / Navigation Bar -->
+  <header class="navbar">
+    <div class="nav-brand">
+      <div class="logo-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">SmartRoute <span class="badge-ai">AI Multi-Agent</span></div>
+        <div class="brand-sub">Constraint-Solving Trip Engine &bull; Budget &bull; Time &bull; Open Hours &bull; Buffers</div>
+      </div>
+    </div>
+    <div class="nav-actions">
+      <button class="btn-secondary" id="newTripBtn" title="Reset form and select new custom origin and destination">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>
+        Reset Route
+      </button>
+      <button class="btn-secondary" id="openBookingsBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        My Bookings (<span id="bookingCount">0</span>)
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Application Layout -->
+  <div class="app-layout">
+    <!-- Left Sidebar: Configuration & Constraints -->
+    <aside class="sidebar">
+      <div class="sidebar-card">
+        <h3 class="sidebar-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+          Custom Trip Builder
+        </h3>
+
+        <form id="tripForm">
+          <!-- Modern Route & Waypoints Builder Card -->
+          <div class="route-builder-card" id="routeBuilderCard">
+            <div class="route-card-header">
+              <div class="route-card-title">
+                <span class="route-pulse-dot"></span>
+                <span>Route & Multi-Stop Waypoints</span>
+              </div>
+              <div class="deadline-pill" id="deadlinePill" title="Calculated from Start & End dates">
+                <span class="deadline-label">Trip Deadline:</span>
+                <span class="deadline-value" id="deadlineDaysVal">3 Days</span>
+              </div>
+            </div>
+
+            <!-- Visual Track & Inputs Container -->
+            <div class="route-track-container">
+              <!-- Vertical Route Connector Line -->
+              <div class="route-vertical-line"></div>
+
+              <!-- 1. Origin (Start City) -->
+              <div class="route-node origin-node">
+                <div class="node-marker origin-marker" title="Trip starts here on start date">
+                  <span class="marker-dot"></span>
+                </div>
+                <div class="node-content">
+                  <div class="node-header">
+                    <label for="originInput">Origin (Start Base)</label>
+                    <div class="node-actions">
+                      <button type="button" class="btn-text-action" id="pickOriginMapBtn" title="Click on the Leaflet map to set Origin">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        Map Pick
+                      </button>
+                    </div>
+                  </div>
+                  <div class="input-styled-wrapper">
+                    <input type="text" id="originInput" list="citiesList" value="Delhi" required placeholder="Type or select Origin city..." autocomplete="off" />
+                  </div>
+                  <div class="city-quick-tags" id="originQuickTags">
+                    <span class="quick-tag-label">Popular:</span>
+                    <button type="button" class="city-chip" data-target="origin" data-city="Delhi">Delhi</button>
+                    <button type="button" class="city-chip" data-target="origin" data-city="Mumbai">Mumbai</button>
+                    <button type="button" class="city-chip" data-target="origin" data-city="Bangalore">Bangalore</button>
+                    <button type="button" class="city-chip" data-target="origin" data-city="Kolkata">Kolkata</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Dynamic In-Between Stopovers Container -->
+              <div id="stopoversContainer" class="stopovers-list"></div>
+
+              <!-- Add In-Between Stop Button & Suggested Corridor Chips -->
+              <div class="route-waypoint-actions">
+                <button type="button" id="addStopoverBtn" class="btn-add-stopover">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  <span>+ Add In-Between Place / Stop</span>
+                </button>
+                <div class="corridor-suggestions" id="corridorSuggestions">
+                  <span class="suggestion-label">Suggested En-Route:</span>
+                  <div class="suggestion-chips" id="suggestionChips">
+                    <!-- Populated dynamically based on corridor -->
+                    <button type="button" class="chip-suggestion" data-city="Neemrana">+ Neemrana</button>
+                    <button type="button" class="chip-suggestion" data-city="Behror">+ Behror</button>
+                    <button type="button" class="chip-suggestion" data-city="Alwar">+ Alwar</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Reverse Route / Swap Button -->
+              <div class="swap-divider">
+                <button type="button" id="swapLocationsBtn" class="btn-swap" title="Reverse Route (Swap Origin & Destination)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l4-4m-4 4l-4-4"></path></svg>
+                </button>
+              </div>
+
+              <!-- 2. Destination (Target City) -->
+              <div class="route-node dest-node">
+                <div class="node-marker dest-marker" title="Final destination reached">
+                  <span class="marker-dot"></span>
+                </div>
+                <div class="node-content">
+                  <div class="node-header">
+                    <label for="destinationInput">Destination (Final Target)</label>
+                    <div class="node-actions">
+                      <button type="button" class="btn-text-action" id="pickDestMapBtn" title="Click on the Leaflet map to set Destination">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        Map Pick
+                      </button>
+                    </div>
+                  </div>
+                  <div class="input-styled-wrapper">
+                    <input type="text" id="destinationInput" list="citiesList" value="Jaipur" required placeholder="Type or select Destination city..." autocomplete="off" />
+                  </div>
+                  <div class="city-quick-tags" id="destQuickTags">
+                    <span class="quick-tag-label">Popular:</span>
+                    <button type="button" class="city-chip" data-target="destination" data-city="Jaipur">Jaipur</button>
+                    <button type="button" class="city-chip" data-target="destination" data-city="Goa">Goa</button>
+                    <button type="button" class="city-chip" data-target="destination" data-city="Manali">Manali</button>
+                    <button type="button" class="city-chip" data-target="destination" data-city="Agra">Agra</button>
+                    <button type="button" class="city-chip" data-target="destination" data-city="Udaipur">Udaipur</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dynamic Multi-Modal Segment Transport Choice List -->
+            <div class="leg-modes-container" id="legModesContainer">
+              <div class="leg-modes-header">
+                <div class="leg-modes-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                  <span>Multi-Modal Segment Transport</span>
+                </div>
+                <span class="leg-modes-sub">Customize transport per leg with live time, fares & delays</span>
+              </div>
+              <div id="legSelectorsList" class="leg-selectors-list">
+                <!-- Dynamically rendered per-leg comparison cards -->
+              </div>
+              <div id="returnLegContainer" class="return-leg-container">
+                <!-- Dedicated Return Leg Mode Selector Card -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Dynamic Datalist for Cities -->
+          <datalist id="citiesList"></datalist>
+
+          <!-- Dates & Start Time -->
+          <div class="form-row">
+            <div class="form-group">
+              <label>Start Date</label>
+              <input type="date" id="startDateInput" value="2026-10-01" required />
+            </div>
+            <div class="form-group">
+              <label>End Date</label>
+              <input type="date" id="endDateInput" value="2026-10-03" required />
+            </div>
+          </div>
+
+          <!-- Budget & Party Size -->
+          <div class="form-row">
+            <div class="form-group">
+              <label>Total Budget (₹ INR)</label>
+              <input type="number" id="budgetInput" value="16000" min="2000" step="500" required />
+            </div>
+            <div class="form-group">
+              <label>Party Size</label>
+              <select id="partySizeInput">
+                <option value="1">Solo (1)</option>
+                <option value="2" selected>Couple (2)</option>
+                <option value="4">Family / Group (4)</option>
+                <option value="6">Group (6)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Travel Mode & Departure Hour -->
+          <div class="form-row">
+            <div class="form-group">
+              <label>Default Travel Mode</label>
+              <select id="travelModeInput">
+                <option value="driving" selected>🚗 Road Trip / Self-Drive Car</option>
+                <option value="train">🚆 Intercity Express Train</option>
+                <option value="bus">🚌 Highway Express Bus</option>
+                <option value="shared_cab">🛺 Shared Outstation Cab</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Departure Hour</label>
+              <input type="time" id="startTimeInput" value="07:30" />
+            </div>
+          </div>
+
+          <!-- Preferences -->
+          <div class="form-group">
+            <label>Stay Preference</label>
+            <select id="stayPrefInput">
+              <option value="standard_hotel" selected>Standard Heritage / 3-Star Hotel</option>
+              <option value="budget_hostel">Backpacker Hostel / Highway Lodge</option>
+              <option value="boutique_resort">Boutique Resort / Haveli Retreat</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Food & Dining Preference</label>
+            <select id="foodPrefInput">
+              <option value="roadside_dhaba" selected>Authentic Roadside Dhabas (Parathas & Chai)</option>
+              <option value="local_cuisine">Local Regional Specialties & Thalis</option>
+              <option value="vegetarian">Pure Vegetarian & Sweets</option>
+              <option value="cafe">Himalayan Café & Brew Stops</option>
+              <option value="fine_dining">Fine Dining & Royal Heritage</option>
+              <option value="all">All Cuisine Mix</option>
+            </select>
+          </div>
+
+          <!-- Interests -->
+          <div class="form-group">
+            <label>Interests & Themes</label>
+            <div class="interests-grid">
+              <label class="chip"><input type="checkbox" name="interests" value="heritage" checked /> <span>🏛️ Heritage</span></label>
+              <label class="chip"><input type="checkbox" name="interests" value="food" checked /> <span>🍲 Food Trail</span></label>
+              <label class="chip"><input type="checkbox" name="interests" value="scenic" checked /> <span>🌄 Viewpoints</span></label>
+              <label class="chip"><input type="checkbox" name="interests" value="nature" /> <span>🌿 Nature</span></label>
+              <label class="chip"><input type="checkbox" name="interests" value="religious" /> <span>🕉️ Spiritual Sites</span></label>
+              <label class="chip"><input type="checkbox" name="interests" value="relaxation" /> <span>☕ Leisure</span></label>
+              <label class="chip"><input type="checkbox" name="interests" value="shopping" /> <span>🛍️ Bazaars</span></label>
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <button type="submit" class="btn-primary" id="planSubmitBtn">
+            <span class="btn-text">Generate Optimized Itineraries</span>
+            <span class="btn-spinner" style="display:none;"></span>
+          </button>
+        </form>
+      </div>
+
+      <!-- Quick Constraint Summary Card -->
+      <div class="sidebar-card info-card">
+        <h4>The 4 Hard Constraints Solved:</h4>
+        <ul class="constraint-checklist">
+          <li><strong>Budget:</strong> Transport + Stays + Meals + Tickets &le; Budget</li>
+          <li><strong>Time Window:</strong> Max 8h driving/day & arrival deadlines</li>
+          <li><strong>Operating Hours:</strong> Synchronized with real open/close times</li>
+          <li><strong>Delays & Buffers:</strong> +18% traffic buffer & 25m transition window</li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Right Workspace: Itineraries, Map, Timeline, Trace -->
+    <main class="main-content">
+      <!-- Pareto Variant Selector Tabs -->
+      <div class="pareto-container" id="paretoContainer">
+        <div class="pareto-header">
+          <h3>Pareto-Optimal Itineraries</h3>
+          <span class="pareto-tag">Multi-Objective Frontier &bull; Choose your travel style</span>
+        </div>
+        <div class="variant-cards" id="variantCards">
+          <!-- Dynamically populated variant cards -->
+          <div class="variant-card active" data-variant="balanced">
+            <div class="v-badge">Recommended</div>
+            <h4>Balanced & Curated</h4>
+            <div class="v-price">₹14,280 <span class="v-party">/ 2 people</span></div>
+            <div class="v-score">★ 9.4 Score</div>
+            <div class="v-desc">Harmonious mix of heritage, highway dhabas, comfortable stays & buffers.</div>
+          </div>
+          <div class="variant-card" data-variant="fastest">
+            <div class="v-badge v-fast">Direct Express</div>
+            <h4>Fastest / Direct</h4>
+            <div class="v-price">₹12,450</div>
+            <div class="v-score">★ 8.8 Score</div>
+            <div class="v-desc">Minimizes highway pauses, highlights crown sights with rapid transitions.</div>
+          </div>
+          <div class="variant-card" data-variant="cheapest">
+            <div class="v-badge v-cheap">Max Savings</div>
+            <h4>Budget Explorer</h4>
+            <div class="v-price">₹8,900</div>
+            <div class="v-score">★ 9.1 Score</div>
+            <div class="v-desc">Roadside dhabas, backpacker lodge stays, and low-cost cultural exploration.</div>
+          </div>
+          <div class="variant-card" data-variant="scenic">
+            <div class="v-badge v-scenic">Deep Immersion</div>
+            <h4>Scenic & Explorer</h4>
+            <div class="v-price">₹18,500</div>
+            <div class="v-score">★ 9.2 Score</div>
+            <div class="v-desc">Maximum sightseeing density, boutique haveli stay, sunset viewpoints.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Navigation Tabs (Map & Overview, Timeline, Cost Audit, Agent Trace) -->
+      <div class="tabs-nav">
+        <button class="tab-btn active" data-tab="tab-timeline">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+          Day-by-Day Timeline
+        </button>
+        <button class="tab-btn" data-tab="tab-map">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+          Route & Map View
+        </button>
+        <button class="tab-btn" data-tab="tab-budget">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          Budget & Feasibility Gate
+        </button>
+        <button class="tab-btn" data-tab="tab-trace">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+          Live Agent-to-Agent Trace (<span id="traceBadgeCount">0</span>)
+        </button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div class="tab-content-wrapper">
+        <!-- 1. Day-by-Day Timeline Tab -->
+        <section id="tab-timeline" class="tab-panel active">
+          <div class="timeline-controls">
+            <div id="dayFilterContainer" class="day-pills"></div>
+            <div class="timeline-actions">
+              <button class="btn-action-sm" id="exportIcsBtn" title="Export as standard iCalendar file for Google/Apple Calendar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                Export Calendar (.ics)
+              </button>
+              <button class="btn-action-sm" id="printTripBtn" title="Print or save PDF trip brief">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                Print Trip Brief
+              </button>
+            </div>
+            <div class="timeline-meta" id="timelineMeta"></div>
+          </div>
+          <div class="itinerary-timeline" id="itineraryTimeline"></div>
+        </section>
+
+        <!-- 2. Route Map Tab -->
+        <section id="tab-map" class="tab-panel">
+          <div class="map-container-box">
+            <div id="mapPickerBanner" class="map-picker-banner" style="display: none;">
+              <span class="map-picker-text">📍 Click anywhere on the map to set <strong id="mapPickerTargetLabel">Origin</strong></span>
+              <button type="button" id="cancelMapPickerBtn" class="btn-picker-cancel">Cancel</button>
+            </div>
+            <div id="leafletMap"></div>
+            <div class="map-overlay-card" id="mapOverlayCard">
+              <h4 id="mapRouteTitle">Custom Route</h4>
+              <div id="mapRouteStats">Loading route data...</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. Budget Feasibility Tab -->
+        <section id="tab-budget" class="tab-panel">
+          <div class="budget-audit-card" id="budgetAuditCard"></div>
+        </section>
+
+        <!-- 4. Agent Trace Tab -->
+        <section id="tab-trace" class="tab-panel">
+          <div class="trace-header">
+            <h4>Multi-Agent Communication Log & Constraint Solver Loop</h4>
+            <p>Inspect real-time structured messages between Planner, Route, Spot, Food & Stay, Budget, and Scheduler agents.</p>
+          </div>
+          <div class="trace-stream" id="traceStream"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Booking Simulation Modal -->
+  <div class="modal-backdrop" id="bookingModal" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="bookingModalTitle">Confirm Booking</h3>
+        <button class="btn-close" id="closeModalBtn">&times;</button>
+      </div>
+      <div class="modal-body" id="bookingModalBody"></div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="cancelBookingBtn">Cancel</button>
+        <button class="btn-primary" id="confirmBookingBtn">Confirm & Issue Voucher</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bookings Drawer Modal -->
+  <div class="modal-backdrop" id="myBookingsModal" style="display:none;">
+    <div class="modal-card wide">
+      <div class="modal-header">
+        <h3>My Booked Reservations & Vouchers</h3>
+        <button class="btn-close" id="closeBookingsModalBtn">&times;</button>
+      </div>
+      <div class="modal-body" id="myBookingsList"></div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="/app.js"></script>
+</body>
+</html>
