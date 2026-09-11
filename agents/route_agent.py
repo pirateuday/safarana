@@ -17,13 +17,15 @@ class RouteAgent(BaseAgent):
         stopovers: Optional[List[str]] = None,
         travel_mode: str = "driving",
         leg_modes: Optional[List[str]] = None,
-        party_size: int = 1
+        party_size: int = 1,
+        selected_trains: Optional[Dict[str, str]] = None,
+        api_key: Optional[str] = None
     ) -> RouteOption:
         stopover_names = [s.strip() for s in (stopovers or []) if s and s.strip()]
         self.log_step(
             recipient="Planner",
             action="initiate_routing",
-            payload={"origin": origin, "destination": destination, "stopovers": stopover_names, "mode": travel_mode, "leg_modes": leg_modes, "party_size": party_size},
+            payload={"origin": origin, "destination": destination, "stopovers": stopover_names, "mode": travel_mode, "leg_modes": leg_modes, "party_size": party_size, "selected_trains": selected_trains},
             notes=f"Querying OSRM & geographical topology for path from {origin} to {destination} via {stopover_names if stopover_names else 'direct corridor'} ({travel_mode})."
         )
 
@@ -34,7 +36,9 @@ class RouteAgent(BaseAgent):
             stopovers=stopover_names,
             travel_mode=travel_mode,
             leg_modes=leg_modes,
-            party_size=party_size
+            party_size=party_size,
+            selected_trains=selected_trains,
+            api_key=api_key
         )
 
         geometry_points = [
@@ -57,7 +61,21 @@ class RouteAgent(BaseAgent):
                 local_transit_cost=leg.get("local_transit_cost", 0.0),
                 departure_hub=leg.get("departure_hub", ""),
                 arrival_hub=leg.get("arrival_hub", ""),
-                local_vehicle_type=leg.get("local_vehicle_type", "")
+                local_vehicle_type=leg.get("local_vehicle_type", ""),
+                train_number=leg.get("train_number"),
+                train_name=leg.get("train_name"),
+                departure_time=leg.get("departure_time"),
+                arrival_time=leg.get("arrival_time"),
+                available_trains=leg.get("available_trains", []),
+                fare_source=leg.get("fare_source", "calibrated_model"),
+                fare_currency=leg.get("fare_currency", "₹"),
+                fare_breakdown=leg.get("fare_breakdown", {}),
+                seat_status=leg.get("seat_status", []),
+                coach_position=leg.get("coach_position"),
+                route_stops=leg.get("route_stops", []),
+                live_status=leg.get("live_status"),
+                live_delay_mins=leg.get("live_delay_mins", 0),
+                live_status_text=leg.get("live_status_text", "Scheduled")
             )
             for leg in route_data.get("legs", [])
         ]
@@ -72,7 +90,8 @@ class RouteAgent(BaseAgent):
             buffered_travel_time_hours=route_data["buffered_travel_time_hours"],
             estimated_transit_cost=route_data["estimated_transit_cost"],
             corridor_geometry=geometry_points,
-            selected_mode=travel_mode
+            selected_mode=travel_mode,
+            fare_source=route_data.get("fare_source", "calibrated_model")
         )
 
         via_summary = f" via {', '.join(stopover_names)}" if stopover_names else (f" via {', '.join(route_option.waypoints[:2])}" if route_option.waypoints else "")

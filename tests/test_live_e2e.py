@@ -1,16 +1,28 @@
 import unittest
-import requests
+from fastapi.testclient import TestClient
+from app import app
 
 class TestLiveE2E(unittest.TestCase):
-    BASE_URL = "http://localhost:8000"
+    def setUp(self):
+        self.client = TestClient(app)
 
     def test_presets(self):
-        r = requests.get(f"{self.BASE_URL}/api/presets")
+        r = self.client.get("/api/presets")
         self.assertEqual(r.status_code, 200)
         corridors = [p["id"] for p in r.json()["presets"]]
         self.assertIn("chennai-pondicherry", corridors)
         self.assertIn("kolkata-darjeeling", corridors)
         self.assertIn("pune-mahabaleshwar", corridors)
+
+    def test_maps_status_and_trains(self):
+        r = self.client.get("/api/maps/status")
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertTrue(data.get("key_configured"))
+
+        tr = self.client.get("/api/trains/12015/details")
+        self.assertEqual(tr.status_code, 200)
+        self.assertTrue(tr.json()["success"])
 
     def test_plan_and_weather(self):
         payload = {
@@ -23,7 +35,7 @@ class TestLiveE2E(unittest.TestCase):
             "travel_mode": "driving",
             "interests": ["heritage", "scenic"]
         }
-        r = requests.post(f"{self.BASE_URL}/api/plan", json=payload)
+        r = self.client.post("/api/plan", json=payload)
         self.assertEqual(r.status_code, 200)
         data = r.json()
         self.assertIn("options", data)
@@ -38,7 +50,7 @@ class TestLiveE2E(unittest.TestCase):
 
         # Verify Calendar .ics export
         plan_id = data["plan_id"]
-        ics_res = requests.get(f"{self.BASE_URL}/api/plan/{plan_id}/export/ics?variant=balanced")
+        ics_res = self.client.get(f"/api/plan/{plan_id}/export/ics?variant=balanced")
         self.assertEqual(ics_res.status_code, 200)
         self.assertIn("text/calendar", ics_res.headers.get("content-type", ""))
         self.assertIn("BEGIN:VCALENDAR", ics_res.text)

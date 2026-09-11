@@ -925,17 +925,32 @@ CURATED_PLACES: List[Dict[str, Any]] = [
     }
 ]
 
-@tool(name="search_places", description="Search tourist spots, attractions, and viewpoints by location and interest keywords.")
+# Active index for fast place lookup and consistent hours
+LIVE_SPOTS_INDEX: Dict[str, Dict[str, Any]] = {}
+
+@tool(name="search_places", description="Search tourist spots, attractions, and viewpoints by location and interest keywords from OpenStreetMap, OpenTripMap, and Curated places.")
 def search_places(location: str, interest: Optional[str] = None, max_results: int = 6) -> List[Dict[str, Any]]:
+    # Try fetching from unified POI engine (OSM Overpass / OpenTripMap / Curated)
+    try:
+        from tools.poi_tools import get_city_spots
+        live_spots = get_city_spots(city_name=location, genre_filter=interest, max_count=max_results)
+        if live_spots:
+            for sp in live_spots:
+                LIVE_SPOTS_INDEX[sp["id"].lower()] = sp
+                LIVE_SPOTS_INDEX[sp["name"].lower()] = sp
+            return live_spots[:max_results]
+    except Exception as e:
+        pass
+
     loc_lower = location.strip().lower()
     interest_lower = interest.strip().lower() if interest else None
 
-    # Filter matching places
+    # Filter matching curated places
     matches = []
     for p in CURATED_PLACES:
         p_loc = p["location"].lower()
         if loc_lower in p_loc or p_loc in loc_lower:
-            if not interest_lower or any(interest_lower in i.lower() for i in p["interests"]):
+            if not interest_lower or any(interest_lower in i.lower() for i in p.get("interests", [])):
                 matches.append(p)
             elif not interest_lower:
                 matches.append(p)
@@ -956,6 +971,8 @@ def search_places(location: str, interest: Optional[str] = None, max_results: in
                 "lat": round(c.lat + 0.005, 4),
                 "lon": round(c.lon + 0.005, 4),
                 "category": "viewpoint",
+                "genre": "🏛️ Heritage & Monument",
+                "source": "curated",
                 "interests": ["heritage", "scenic", "relaxation"],
                 "typical_duration_mins": 75,
                 "entry_fee_per_person": 30.0,
@@ -972,6 +989,8 @@ def search_places(location: str, interest: Optional[str] = None, max_results: in
                 "lat": round(c.lat - 0.005, 4),
                 "lon": round(c.lon - 0.005, 4),
                 "category": "nature_spot",
+                "genre": "🌅 Viewpoint & Scenic",
+                "source": "curated",
                 "interests": ["nature", "scenic"],
                 "typical_duration_mins": 60,
                 "entry_fee_per_person": 20.0,
@@ -983,13 +1002,42 @@ def search_places(location: str, interest: Optional[str] = None, max_results: in
             }
         ]
 
+    for sp in matches:
+        LIVE_SPOTS_INDEX[sp["id"].lower()] = sp
+        LIVE_SPOTS_INDEX[sp["name"].lower()] = sp
+
     return matches[:max_results]
 
 @tool(name="get_opening_hours", description="Check opening hours, closing hours, and closed days for a specific attraction.")
 def get_opening_hours(place_id_or_name: str) -> Dict[str, Any]:
     identifier = place_id_or_name.strip().lower()
+
+    # 1. Check live spots index
+    if identifier in LIVE_SPOTS_INDEX:
+        sp = LIVE_SPOTS_INDEX[identifier]
+        return {
+            "id": sp["id"],
+            "name": sp["name"],
+            "opening_time": sp["opening_time"],
+            "closing_time": sp["closing_time"],
+            "closed_days": sp.get("closed_days", []),
+            "typical_duration_mins": sp.get("typical_duration_mins", 90)
+        }
+
+    for k, sp in LIVE_SPOTS_INDEX.items():
+        if identifier in k or k in identifier:
+            return {
+                "id": sp["id"],
+                "name": sp["name"],
+                "opening_time": sp["opening_time"],
+                "closing_time": sp["closing_time"],
+                "closed_days": sp.get("closed_days", []),
+                "typical_duration_mins": sp.get("typical_duration_mins", 90)
+            }
+
+    # 2. Check curated places catalog
     for p in CURATED_PLACES:
-        if p["id"].lower() == identifier or identifier in p["name"].lower():
+        if p["id"].lower() == identifier or identifier in p["name"].lower() or p["name"].lower() in identifier:
             return {
                 "id": p["id"],
                 "name": p["name"],

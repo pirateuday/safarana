@@ -10,12 +10,18 @@ let mapPickingTarget = null;
 let tempPickerMarker = null;
 let currentLegModes = {};
 let currentReturnMode = null;
+let currentSelectedTrains = {};
+let currentReturnTrain = null;
+let userSelectedSpotsByCity = {};
+let citySpotsCache = {};
+let cityActiveGenre = {};
 
 // Initialize upon DOM load
 document.addEventListener("DOMContentLoaded", () => {
   initMap();
   initEventListeners();
   initLocationControls();
+  initSpotPickers();
   loadCities();
   loadBookingsCount();
   // Initial plan load
@@ -119,6 +125,7 @@ function initLocationControls() {
       origInput.value = destInput.value;
       destInput.value = temp;
       updateCorridorSuggestions();
+      updateDestSpotPicker(false);
       triggerPlanning();
     });
   }
@@ -132,6 +139,7 @@ function initLocationControls() {
         document.getElementById("originInput").value = city;
       } else if (target === "destination") {
         document.getElementById("destinationInput").value = city;
+        updateDestSpotPicker(false);
       }
       updateCorridorSuggestions();
       triggerPlanning();
@@ -145,10 +153,12 @@ function initLocationControls() {
       document.getElementById("originInput").value = "Delhi";
       document.getElementById("destinationInput").value = "Jaipur";
       currentLegModes = {};
+      userSelectedSpotsByCity = {};
       const container = document.getElementById("stopoversContainer");
       if (container) container.innerHTML = "";
       document.getElementById("originInput").focus();
       updateCorridorSuggestions();
+      updateDestSpotPicker(false);
       triggerPlanning();
     });
   }
@@ -175,12 +185,15 @@ function initLocationControls() {
     endDateInput.addEventListener("change", updateDeadlineDisplay);
   }
 
-  // Origin & Destination input change for corridor suggestions
+  // Origin & Destination input change for corridor suggestions & spot picker
   const origInput = document.getElementById("originInput");
   const destInput = document.getElementById("destinationInput");
   if (origInput && destInput) {
     origInput.addEventListener("change", updateCorridorSuggestions);
-    destInput.addEventListener("change", updateCorridorSuggestions);
+    destInput.addEventListener("change", () => {
+      updateCorridorSuggestions();
+      updateDestSpotPicker(false);
+    });
   }
 
   // Add In-Between Stop button
@@ -192,6 +205,184 @@ function initLocationControls() {
   // Initial updates
   updateDeadlineDisplay();
   updateCorridorSuggestions();
+}
+
+function initSpotPickers() {
+  const toggleBtn = document.getElementById("destSpotPickerToggle");
+  const body = document.getElementById("destSpotPickerBody");
+  const container = document.getElementById("destSpotPicker");
+  const refreshBtn = document.getElementById("destRefreshSpotsBtn");
+  const destInput = document.getElementById("destinationInput");
+
+  if (toggleBtn && body && container) {
+    toggleBtn.addEventListener("click", () => {
+      const isOpen = container.classList.toggle("open");
+      body.style.display = isOpen ? "block" : "none";
+      if (isOpen) {
+        updateDestSpotPicker(false);
+      }
+    });
+  }
+
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const dest = destInput ? destInput.value.trim() : "Jaipur";
+      if (dest) {
+        updateDestSpotPicker(true);
+      }
+    });
+  }
+
+  if (destInput) {
+    destInput.addEventListener("change", () => {
+      const dest = destInput.value.trim();
+      const nameElem = document.getElementById("destSpotPickerCityName");
+      if (nameElem) nameElem.textContent = dest || "Destination";
+      updateDestSpotPicker(false);
+    });
+  }
+}
+
+async function fetchCitySpots(cityName, forceRefresh = false) {
+  const normCity = (cityName || "").trim();
+  if (!normCity) return [];
+  if (!forceRefresh && citySpotsCache[normCity]) {
+    return citySpotsCache[normCity];
+  }
+  try {
+    const res = await fetch(`/api/spots?city=${encodeURIComponent(normCity)}`);
+    if (!res.ok) throw new Error("Failed to fetch spots");
+    const data = await res.json();
+    citySpotsCache[normCity] = data.spots || [];
+    return citySpotsCache[normCity];
+  } catch (err) {
+    console.error(`Error fetching spots for ${normCity}:`, err);
+    return [];
+  }
+}
+
+async function updateDestSpotPicker(forceRefresh = false) {
+  const destInput = document.getElementById("destinationInput");
+  const dest = destInput ? destInput.value.trim() : "Jaipur";
+  const nameElem = document.getElementById("destSpotPickerCityName");
+  if (nameElem) nameElem.textContent = dest || "Destination";
+  if (!dest) return;
+
+  const listElem = document.getElementById("destSpotsList");
+  const genresElem = document.getElementById("destGenreFilters");
+  const badgeElem = document.getElementById("destSpotSelectedBadge");
+
+  await renderCitySpotPicker(dest, listElem, genresElem, badgeElem, false, forceRefresh);
+}
+
+async function renderCitySpotPicker(cityName, listElem, genresElem, badgeElem, isStopover = false, forceRefresh = false) {
+  if (!listElem) return;
+  listElem.innerHTML = `<div class="spots-loading-hint">Fetching attractions in ${cityName} from OpenStreetMap & OpenTripMap...</div>`;
+
+  const spots = await fetchCitySpots(cityName, forceRefresh);
+  if (!spots || spots.length === 0) {
+    listElem.innerHTML = `<div class="spots-loading-hint">No attractions found for "${cityName}". Spots will be discovered automatically during planning.</div>`;
+    return;
+  }
+
+  // Determine genres present
+  const genres = ["All"];
+  spots.forEach(s => {
+    if (s.genre && !genres.includes(s.genre)) {
+      genres.push(s.genre);
+    }
+  });
+
+  const activeGenre = cityActiveGenre[cityName] || "All";
+
+  // Render genre filter chips
+  if (genresElem) {
+    genresElem.innerHTML = genres.map(g => `
+      <button type="button" class="genre-filter-chip ${g === activeGenre ? 'active' : ''}" data-genre="${g}">
+        ${g}
+      </button>
+    `).join("");
+
+    genresElem.querySelectorAll(".genre-filter-chip").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        cityActiveGenre[cityName] = btn.dataset.genre;
+        renderCitySpotPicker(cityName, listElem, genresElem, badgeElem, isStopover, false);
+      });
+    });
+  }
+
+  // Filter spots by genre
+  const filteredSpots = activeGenre === "All"
+    ? spots
+    : spots.filter(s => s.genre === activeGenre);
+
+  // Initialize selected set for city if not existing
+  if (!userSelectedSpotsByCity[cityName]) {
+    userSelectedSpotsByCity[cityName] = new Set();
+  }
+  const selectedSet = userSelectedSpotsByCity[cityName];
+
+  // Update badge count
+  const count = selectedSet.size;
+  if (badgeElem) {
+    badgeElem.textContent = `${count} Selected`;
+    badgeElem.classList.toggle("has-selected", count > 0);
+  }
+
+  listElem.innerHTML = "";
+  filteredSpots.forEach(spot => {
+    const isSelected = selectedSet.has(spot.name);
+    const item = document.createElement("div");
+    item.className = `spot-selection-item ${isSelected ? 'selected' : ''}`;
+    
+    const feeText = spot.entry_fee_per_person > 0 ? `🎟️ ₹${spot.entry_fee_per_person}` : "🎟️ Free";
+    const hoursText = `⏰ ${spot.opening_time} - ${spot.closing_time}`;
+    const genreBadge = spot.genre ? `<span class="badge-genre">${spot.genre}</span>` : "";
+    const sourceBadge = spot.source ? `<span class="badge-source">${spot.source.toUpperCase()}</span>` : "";
+
+    item.innerHTML = `
+      <input type="checkbox" class="spot-checkbox" ${isSelected ? 'checked' : ''} />
+      <div class="spot-item-details">
+        <div class="spot-item-header">
+          <span class="spot-item-name" title="${spot.name}">${spot.name}</span>
+          <span class="spot-item-rating">★ ${spot.rating}</span>
+        </div>
+        <div class="spot-item-badges">
+          ${genreBadge}
+          <span class="badge-timing">${hoursText}</span>
+          <span class="badge-fee">${feeText}</span>
+          ${sourceBadge}
+        </div>
+      </div>
+    `;
+
+    const checkbox = item.querySelector(".spot-checkbox");
+
+    item.addEventListener("click", (e) => {
+      if (e.target !== checkbox) {
+        checkbox.checked = !checkbox.checked;
+      }
+      if (checkbox.checked) {
+        selectedSet.add(spot.name);
+        item.classList.add("selected");
+      } else {
+        selectedSet.delete(spot.name);
+        item.classList.remove("selected");
+      }
+
+      const updatedCount = selectedSet.size;
+      if (badgeElem) {
+        badgeElem.textContent = `${updatedCount} Selected`;
+        badgeElem.classList.toggle("has-selected", updatedCount > 0);
+      }
+
+      triggerPlanning();
+    });
+
+    listElem.appendChild(item);
+  });
 }
 
 function updateDeadlineDisplay() {
@@ -254,6 +445,7 @@ function addStopoverRow(city = "", stayDays = "") {
   const container = document.getElementById("stopoversContainer");
   if (!container) return;
 
+  const stopoverUid = "st_" + Math.random().toString(36).substring(2, 8);
   const row = document.createElement("div");
   row.className = "stopover-node";
   row.innerHTML = `
@@ -276,10 +468,59 @@ function addStopoverRow(city = "", stayDays = "") {
           <option value="0" ${stayDays === "0" ? "selected" : ""}>En-Route (0 Days)</option>
         </select>
       </div>
+
+      <!-- Nested Spot Picker for Stopover -->
+      <div class="stopover-spot-picker">
+        <button type="button" class="btn-toggle-stopover-spots" id="toggle_${stopoverUid}">
+          <span>🏛️ Places in <strong class="stopover-city-label">${city || 'this Stop'}</strong></span>
+          <span class="spot-picker-count-badge" id="badge_${stopoverUid}">0 Selected</span>
+          <svg class="spot-picker-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div class="spot-picker-body" id="body_${stopoverUid}" style="display:none; margin-top:6px;">
+          <div class="genre-filter-bar" id="genres_${stopoverUid}"></div>
+          <div class="spot-selection-list" id="list_${stopoverUid}">
+            <div class="spots-loading-hint">${city ? 'Click to load places...' : 'Enter a city name above'}</div>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 
+  const input = row.querySelector(".stopover-loc-input");
+  const toggleBtn = row.querySelector(`#toggle_${stopoverUid}`);
+  const bodyElem = row.querySelector(`#body_${stopoverUid}`);
+  const listElem = row.querySelector(`#list_${stopoverUid}`);
+  const genresElem = row.querySelector(`#genres_${stopoverUid}`);
+  const badgeElem = row.querySelector(`#badge_${stopoverUid}`);
+  const cityLabel = row.querySelector(".stopover-city-label");
+
+  toggleBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isVisible = bodyElem.style.display === "block";
+    bodyElem.style.display = isVisible ? "none" : "block";
+    toggleBtn.classList.toggle("open", !isVisible);
+    if (!isVisible) {
+      const curCity = input.value.trim();
+      if (curCity) {
+        renderCitySpotPicker(curCity, listElem, genresElem, badgeElem, true, false);
+      }
+    }
+  });
+
+  input.addEventListener("change", () => {
+    const curCity = input.value.trim();
+    if (cityLabel) cityLabel.textContent = curCity || 'this Stop';
+    if (bodyElem.style.display === "block" && curCity) {
+      renderCitySpotPicker(curCity, listElem, genresElem, badgeElem, true, false);
+    }
+    triggerPlanning();
+  });
+
   row.querySelector(".btn-remove-stopover").addEventListener("click", () => {
+    const curCity = input.value.trim();
+    if (curCity && userSelectedSpotsByCity[curCity]) {
+      delete userSelectedSpotsByCity[curCity];
+    }
     row.remove();
     triggerPlanning();
   });
@@ -288,12 +529,7 @@ function addStopoverRow(city = "", stayDays = "") {
     triggerPlanning();
   });
 
-  row.querySelector(".stopover-loc-input").addEventListener("change", () => {
-    triggerPlanning();
-  });
-
   container.appendChild(row);
-  const input = row.querySelector(".stopover-loc-input");
   if (!city) input.focus();
 }
 
@@ -415,23 +651,37 @@ async function triggerPlanning() {
     const loc = locInput ? locInput.value.trim() : "";
     if (loc) {
       const durVal = durSelect ? durSelect.value : "";
+      const selectedForStop = userSelectedSpotsByCity[loc] ? Array.from(userSelectedSpotsByCity[loc]) : [];
       stopovers.push({
         location: loc,
         stay_days: durVal === "" ? null : parseInt(durVal, 10),
+        selected_places: selectedForStop,
       });
     }
   });
+
+  const selectedForDest = userSelectedSpotsByCity[destination] ? Array.from(userSelectedSpotsByCity[destination]) : [];
+  const serializedPlacesByCity = {};
+  for (const [c, setVal] of Object.entries(userSelectedSpotsByCity)) {
+    if (setVal && setVal.size > 0) {
+      serializedPlacesByCity[c] = Array.from(setVal);
+    }
+  }
 
   const payload = {
     origin: origin,
     destination: destination,
     stopovers: stopovers,
+    selected_places: selectedForDest,
+    places_by_city: serializedPlacesByCity,
     budget: parseFloat(document.getElementById("budgetInput").value) || 15000,
     start_date: document.getElementById("startDateInput").value,
     end_date: document.getElementById("endDateInput").value,
     travel_mode: document.getElementById("travelModeInput").value,
     leg_modes: currentLegModes,
     return_travel_mode: currentReturnMode || document.getElementById("travelModeInput").value,
+    selected_trains: currentSelectedTrains,
+    return_train_number: currentReturnTrain,
     interests: selectedInterests.length > 0 ? selectedInterests : ["heritage", "food"],
     food_preference: document.getElementById("foodPrefInput").value,
     stay_preference: document.getElementById("stayPrefInput").value,
@@ -535,26 +785,152 @@ function renderLegModeSelectors() {
 
     const selectedOpt = availableModes.find(o => o.mode === selectedMode);
     let metaDetailsHtml = "";
-    if (selectedOpt && (selectedMode === "train" || selectedMode === "bus" || selectedMode === "shared_cab")) {
+    if (selectedOpt && selectedMode === "train") {
+      const activeTrainNum = currentSelectedTrains[String(legIdx)] || leg.train_number || selectedOpt.train_number;
+      const availTrains = leg.available_trains || selectedOpt.available_trains || [];
+      const curTrain = availTrains.find(t => String(t.number) === String(activeTrainNum)) || {
+        number: activeTrainNum || leg.train_number || "",
+        name: leg.train_name || selectedOpt.train_name || "Express Train",
+        departure: leg.departure_time || selectedOpt.departure_time || "--:--",
+        arrival: leg.arrival_time || selectedOpt.arrival_time || "--:--",
+        duration: `${leg.buffered_duration_hours || 4} hrs`
+      };
+
+      let trainSelectorHtml = "";
+      if (availTrains.length > 0) {
+        trainSelectorHtml = `
+          <div class="train-selector-section">
+            <div class="train-selector-header">
+              <span>🚆 <strong>Select Train (${availTrains.length} direct trains via RailRadar):</strong></span>
+              <span class="badge-live-rail">● Live IRCTC API</span>
+            </div>
+            <div class="train-pills-scroll">
+              ${availTrains.map(t => {
+                const isCur = String(t.number) === String(curTrain.number);
+                const seatsSnippet = (t.seat_status && t.seat_status.length > 0)
+                  ? `<div class="train-pill-seats">${t.seat_status.slice(0, 3).map(s => `<span class="seat-badge-mini ${s.badge}">${s.class_code}: ${s.status_code}</span>`).join('')}</div>`
+                  : '';
+                return `
+                  <button type="button" class="train-pill-btn ${isCur ? 'active' : ''}" data-leg="${legIdx}" data-train="${t.number}">
+                    <div class="train-pill-top">
+                      <span class="train-num">#${t.number}</span>
+                      <span class="train-times">${t.departure} ➔ ${t.arrival}</span>
+                    </div>
+                    <div class="train-pill-name" title="${t.name}">${t.name}</div>
+                    <div class="train-pill-meta">
+                      <span>⏱️ ${t.duration || ''}</span>
+                      <span>${t.type || 'Express'}</span>
+                    </div>
+                    ${seatsSnippet}
+                  </button>
+                `;
+              }).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      const liveInfo = curTrain.live_status || {};
+      const liveDelay = liveInfo.delay_minutes || 0;
+      const liveBadge = liveDelay > 0
+        ? `<span class="badge-tag badge-delay" style="background:#fee2e2; color:#991b1b; font-weight:700;">🔴 Delayed ${liveDelay}m</span>`
+        : `<span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">🟢 On Time</span>`;
+      const curStation = liveInfo.current_station ? ` &bull; At: <strong>${liveInfo.current_station}</strong>` : '';
+
+      const fareSrc = selectedOpt.fare_source;
+      const fareBadge = (fareSrc === 'google_maps')
+        ? `<span class="badge-tag gmaps-fare-badge">🌐 Google Maps Transit Fare</span>`
+        : `<span class="badge-tag fare-calc-badge">💡 Calibrated Fare</span>`;
+
+      const seats = curTrain.seat_status || [];
+      const seatBadgesHtml = (seats && seats.length > 0)
+        ? `
+          <div class="meta-row seat-status-row">
+            <span class="icon">💺</span>
+            <div class="seat-badges-container">
+              <span class="seat-row-label"><strong>Seat Status:</strong></span>
+              ${seats.map(s => `
+                <span class="seat-badge ${s.badge}" title="${s.class_name} — ₹${s.fare} (${s.confirmation_chance || 'GN Quota'})">
+                  <strong>${s.class_code}</strong>: ${s.status_code} <span class="seat-fare">₹${s.fare}</span>
+                </span>
+              `).join("")}
+            </div>
+          </div>
+        ` : '';
+
+      const coachPosHtml = curTrain.coach_position
+        ? `
+          <div class="meta-row">
+            <span class="icon">🚃</span>
+            <span style="font-size:0.75rem; color:#475569;"><strong>Coach Composition:</strong> <code class="coach-pos-code">${curTrain.coach_position}</code></span>
+          </div>
+        ` : '';
+
+      const haltsCount = curTrain.route_stops ? curTrain.route_stops.filter(s => s.is_halt).length : (curTrain.halts || 5);
+      const timetableBtnHtml = `
+        <div class="meta-row timetable-btn-row">
+          <button type="button" class="btn-sm-action view-timetable-btn" data-train="${curTrain.number || curTrain.train_number}" data-name="${curTrain.name || curTrain.train_name}">
+            📋 View Actual Route & Timetable (${haltsCount} Halts)
+          </button>
+        </div>
+      `;
+
       metaDetailsHtml = `
         <div class="leg-transit-meta">
           <div class="meta-row">
+            <span class="icon">🚆</span>
+            <span><strong>Train:</strong> #${curTrain.number} ${curTrain.name} &bull; Dep: <strong>${curTrain.departure}</strong>, Arr: <strong>${curTrain.arrival}</strong></span>
+            ${liveBadge}
+            ${fareBadge}
+          </div>
+          <div class="meta-row">
             <span class="icon">🚉</span>
-            <span><strong>Hubs:</strong> ${selectedOpt.departure_hub} ➔ ${selectedOpt.arrival_hub}</span>
+            <span><strong>Stations:</strong> ${selectedOpt.departure_hub} ➔ ${selectedOpt.arrival_hub}${curStation}</span>
           </div>
           <div class="meta-row">
             <span class="icon">🛺</span>
             <span><strong>Feeder:</strong> ${selectedOpt.local_vehicle_type} (₹${selectedOpt.local_shared_transit_cost || 0} included)</span>
           </div>
+          ${seatBadgesHtml}
+          ${coachPosHtml}
+          ${timetableBtnHtml}
+        </div>
+        ${trainSelectorHtml}
+      `;
+    } else if (selectedOpt && (selectedMode === "bus" || selectedMode === "shared_cab")) {
+      const fareSrc = selectedOpt.fare_source;
+      const fareBadge = (fareSrc === 'google_maps')
+        ? `<span class="badge-tag gmaps-fare-badge">🌐 Google Maps Transit</span>`
+        : `<span class="badge-tag fare-calc-badge">💡 Calibrated Fare</span>`;
+      const breakdownText = selectedOpt.fare_breakdown ? (selectedOpt.fare_breakdown.description || '') : '';
+      metaDetailsHtml = `
+        <div class="leg-transit-meta">
+          <div class="meta-row">
+            <span class="icon">🚉</span>
+            <span><strong>Hubs:</strong> ${selectedOpt.departure_hub} ➔ ${selectedOpt.arrival_hub}</span>
+            ${fareBadge}
+          </div>
+          <div class="meta-row">
+            <span class="icon">🛺</span>
+            <span><strong>Feeder:</strong> ${selectedOpt.local_vehicle_type} (₹${selectedOpt.local_shared_transit_cost || 0} included)</span>
+          </div>
+          ${breakdownText ? `<div class="meta-row"><span class="icon">ℹ️</span><span style="font-size:0.75rem; color:#64748b;">${breakdownText}</span></div>` : ''}
         </div>
       `;
     } else if (selectedOpt && selectedMode === "driving") {
+      const fareSrc = selectedOpt.fare_source;
+      const fareBadge = (fareSrc === 'google_maps')
+        ? `<span class="badge-tag gmaps-fare-badge">🌐 Google Maps Routing</span>`
+        : `<span class="badge-tag fare-calc-badge">💡 Fuel & Tolls</span>`;
+      const breakdownText = selectedOpt.fare_breakdown ? (selectedOpt.fare_breakdown.description || '') : '';
       metaDetailsHtml = `
         <div class="leg-transit-meta">
           <div class="meta-row">
             <span class="icon">🛣️</span>
             <span><strong>Route:</strong> Direct Door-to-Door via NH &bull; +18% Traffic Buffer</span>
+            ${fareBadge}
           </div>
+          ${breakdownText ? `<div class="meta-row"><span class="icon">⛽</span><span style="font-size:0.75rem; color:#475569;">${breakdownText}</span></div>` : ''}
         </div>
       `;
     }
@@ -578,6 +954,15 @@ function renderLegModeSelectors() {
         const leg = btn.dataset.leg;
         const mode = btn.dataset.mode;
         currentLegModes[String(leg)] = mode;
+        triggerPlanning();
+      });
+    });
+
+    card.querySelectorAll(".train-pill-btn").forEach(tBtn => {
+      tBtn.addEventListener("click", () => {
+        const leg = tBtn.dataset.leg;
+        const trainNum = tBtn.dataset.train;
+        currentSelectedTrains[String(leg)] = trainNum;
         triggerPlanning();
       });
     });
@@ -621,12 +1006,119 @@ function renderLegModeSelectors() {
     }).join("");
 
     let metaHtml = "";
-    if (returnTransit && (returnSelectedMode === "train" || returnSelectedMode === "bus" || returnSelectedMode === "shared_cab")) {
+    if (returnTransit && returnSelectedMode === "train") {
+      const activeRetNum = currentReturnTrain || returnTransit.train_number;
+      const retAvail = returnTransit.available_trains || [];
+      const curRetTrain = retAvail.find(t => String(t.number) === String(activeRetNum)) || {
+        number: activeRetNum || returnTransit.train_number || "",
+        name: returnTransit.train_name || "Return Express Train",
+        departure: returnTransit.departure_time || "--:--",
+        arrival: returnTransit.arrival_time || "--:--",
+        duration: `${returnTransit.duration_hours || 4} hrs`
+      };
+
+      let retTrainSelectorHtml = "";
+      if (retAvail.length > 0) {
+        retTrainSelectorHtml = `
+          <div class="train-selector-section">
+            <div class="train-selector-header">
+              <span>🚆 <strong>Select Return Train (${retAvail.length} direct trains via RailRadar):</strong></span>
+              <span class="badge-live-rail">● Live IRCTC API</span>
+            </div>
+            <div class="train-pills-scroll">
+              ${retAvail.map(t => {
+                const isCur = String(t.number) === String(curRetTrain.number);
+                const seatsSnippet = (t.seat_status && t.seat_status.length > 0)
+                  ? `<div class="train-pill-seats">${t.seat_status.slice(0, 3).map(s => `<span class="seat-badge-mini ${s.badge}">${s.class_code}: ${s.status_code}</span>`).join('')}</div>`
+                  : '';
+                return `
+                  <button type="button" class="train-pill-btn ${isCur ? 'active' : ''}" data-return-train="${t.number}">
+                    <div class="train-pill-top">
+                      <span class="train-num">#${t.number}</span>
+                      <span class="train-times">${t.departure} ➔ ${t.arrival}</span>
+                    </div>
+                    <div class="train-pill-name" title="${t.name}">${t.name}</div>
+                    <div class="train-pill-meta">
+                      <span>⏱️ ${t.duration || ''}</span>
+                      <span>${t.type || 'Express'}</span>
+                    </div>
+                    ${seatsSnippet}
+                  </button>
+                `;
+              }).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      const retLive = curRetTrain.live_status || {};
+      const retDelay = retLive.delay_minutes || 0;
+      const retLiveBadge = retDelay > 0
+        ? `<span class="badge-tag badge-delay" style="background:#fee2e2; color:#991b1b; font-weight:700;">🔴 Delayed ${retDelay}m</span>`
+        : `<span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">🟢 On Time</span>`;
+
+      const retFareSrc = returnTransit.fare_source;
+      const retFareBadge = (retFareSrc === 'google_maps')
+        ? `<span class="badge-tag gmaps-fare-badge">🌐 Google Maps Fare</span>`
+        : `<span class="badge-tag fare-calc-badge">💡 Calibrated Fare</span>`;
+
+      const retSeats = curRetTrain.seat_status || [];
+      const retSeatBadgesHtml = (retSeats && retSeats.length > 0)
+        ? `
+          <div class="meta-row seat-status-row">
+            <span class="icon">💺</span>
+            <div class="seat-badges-container">
+              <span class="seat-row-label"><strong>Seat Status:</strong></span>
+              ${retSeats.map(s => `
+                <span class="seat-badge ${s.badge}" title="${s.class_name} — ₹${s.fare} (${s.confirmation_chance || 'GN Quota'})">
+                  <strong>${s.class_code}</strong>: ${s.status_code} <span class="seat-fare">₹${s.fare}</span>
+                </span>
+              `).join("")}
+            </div>
+          </div>
+        ` : '';
+
+      const retHaltsCount = curRetTrain.route_stops ? curRetTrain.route_stops.filter(s => s.is_halt).length : (curRetTrain.halts || 5);
+      const retTimetableBtn = `
+        <div class="meta-row timetable-btn-row">
+          <button type="button" class="btn-sm-action view-timetable-btn" data-train="${curRetTrain.number}" data-name="${curRetTrain.name}">
+            📋 View Actual Route & Timetable (${retHaltsCount} Halts)
+          </button>
+        </div>
+      `;
+
+      metaHtml = `
+        <div class="leg-transit-meta">
+          <div class="meta-row">
+            <span class="icon">🚆</span>
+            <span><strong>Return Train:</strong> #${curRetTrain.number} ${curRetTrain.name} &bull; Dep: <strong>${curRetTrain.departure}</strong>, Arr: <strong>${curRetTrain.arrival}</strong></span>
+            ${retLiveBadge}
+            ${retFareBadge}
+          </div>
+          <div class="meta-row">
+            <span class="icon">🚉</span>
+            <span><strong>Stations:</strong> ${returnTransit.departure_hub || destCity + ' Station'} ➔ ${returnTransit.arrival_hub || originCity + ' Station'}</span>
+          </div>
+          <div class="meta-row">
+            <span class="icon">🛺</span>
+            <span><strong>Feeder:</strong> ${returnTransit.local_vehicle_type || 'Shared Auto'} (₹${returnTransit.local_transit_cost || 0} feeder included)</span>
+          </div>
+          ${retSeatBadgesHtml}
+          ${retTimetableBtn}
+        </div>
+        ${retTrainSelectorHtml}
+      `;
+    } else if (returnTransit && (returnSelectedMode === "bus" || returnSelectedMode === "shared_cab")) {
+      const retFareSrc = returnTransit.fare_source;
+      const retFareBadge = (retFareSrc === 'google_maps')
+        ? `<span class="badge-tag gmaps-fare-badge">🌐 Google Maps Fare</span>`
+        : `<span class="badge-tag fare-calc-badge">💡 Calibrated Fare</span>`;
       metaHtml = `
         <div class="leg-transit-meta">
           <div class="meta-row">
             <span class="icon">🚉</span>
             <span><strong>Hubs:</strong> ${returnTransit.departure_hub || destCity + ' Station'} ➔ ${returnTransit.arrival_hub || originCity + ' Station'}</span>
+            ${retFareBadge}
           </div>
           <div class="meta-row">
             <span class="icon">🛺</span>
@@ -665,6 +1157,14 @@ function renderLegModeSelectors() {
       btn.addEventListener("click", () => {
         const m = btn.dataset.returnMode;
         currentReturnMode = m;
+        triggerPlanning();
+      });
+    });
+
+    returnCard.querySelectorAll(".train-pill-btn").forEach(tBtn => {
+      tBtn.addEventListener("click", () => {
+        const trainNum = tBtn.dataset.returnTrain;
+        currentReturnTrain = trainNum;
         triggerPlanning();
       });
     });
@@ -855,6 +1355,34 @@ function renderTimeline(variant) {
         ? `<span class="badge-tag badge-open">🎟️ Tickets: ₹${tDet.ticket_cost}</span>`
         : "";
 
+      const trainScheduleBadge = (tMode === "train" && tDet.departure_time && tDet.arrival_time)
+        ? `<span class="badge-tag badge-open" style="background:#dbeafe; color:#1e40af; font-weight:700;">🚆 Dep: ${tDet.departure_time} ➔ Arr: ${tDet.arrival_time}</span>`
+        : "";
+
+      const liveTrainBadge = (tMode === "train" && tDet.train_number)
+        ? `<span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">🟢 Train #${tDet.train_number}</span>`
+        : "";
+
+      const fareSrcBadge = (tDet.fare_source === "google_maps")
+        ? `<span class="badge-tag gmaps-fare-badge">🌐 Google Maps Fare</span>`
+        : `<span class="badge-tag fare-calc-badge">💡 Calibrated Fare</span>`;
+
+      const tSeats = tDet.seat_status || [];
+      const daySeatsBadge = (tSeats && tSeats.length > 0)
+        ? `<div class="day-seat-pills" style="margin-top:6px; display:flex; flex-wrap:wrap; gap:4px;">
+            ${tSeats.slice(0, 4).map(s => `<span class="seat-badge ${s.badge}" style="font-size:0.75rem; padding:2px 8px;">${s.class_code}: <strong>${s.status_code}</strong> (₹${s.fare})</span>`).join('')}
+           </div>`
+        : "";
+
+      const tHalts = (tDet.route_stops && tDet.route_stops.length > 0)
+        ? tDet.route_stops.filter(s => s.is_halt).length
+        : (tDet.halts || 5);
+      const dayTimetableBtn = (tMode === "train" && tDet.train_number)
+        ? `<button type="button" class="btn-sm-action view-timetable-btn" data-train="${tDet.train_number}" data-name="${tDet.train_name || ''}" style="margin-top:6px; font-size:0.75rem;">
+            📋 View Route & Timetable (${tHalts} Halts)
+           </button>`
+        : "";
+
       transitStep.innerHTML = `
         <div class="step-header">
           <div class="step-time">${icon} ${modeTitle} &bull; ~${day.transit_time_hours} hrs</div>
@@ -862,11 +1390,16 @@ function renderTimeline(variant) {
         </div>
         <div class="step-title">${tDet.from_place ? `${tDet.from_place} ➔ ${tDet.to_place}` : 'City Transit'}: ${day.transit_distance_km} km</div>
         <div class="step-badges">
+          ${trainScheduleBadge}
+          ${liveTrainBadge}
+          ${fareSrcBadge}
           <span class="badge-tag badge-open">${delayText}</span>
           ${hubsText}
           ${localAutoBadge}
           ${ticketBadge}
         </div>
+        ${daySeatsBadge}
+        ${dayTimetableBtn}
         ${substepsHtml}
         ${switcherHtml}
       `;
@@ -890,8 +1423,22 @@ function renderTimeline(variant) {
 
     // Activities & Meals
     day.activities.forEach((act) => {
+      const isSelected = act.place.user_selected;
       const step = document.createElement("div");
-      step.className = "timeline-step";
+      step.className = `timeline-step ${isSelected ? "step-user-selected" : ""}`;
+
+      const userSelectedBadge = isSelected
+        ? `<span class="badge-tag badge-user-selected">⭐ Selected by You</span>`
+        : "";
+
+      const genreBadge = act.place.genre
+        ? `<span class="badge-tag badge-genre" style="background:#f3e8ff; color:#7e22ce; font-weight:700;">${act.place.genre}</span>`
+        : "";
+
+      const sourceBadge = act.place.source && act.place.source !== "curated"
+        ? `<span class="badge-tag badge-source">${act.place.source.toUpperCase()}</span>`
+        : "";
+
       step.innerHTML = `
         <div class="step-header">
           <div class="step-time">⏰ ${act.start_time} - ${act.end_time} (${act.duration_mins} mins)</div>
@@ -900,9 +1447,12 @@ function renderTimeline(variant) {
         <div class="step-title">${act.place.name}</div>
         <div style="font-size:0.8rem; color:#475569;">${act.place.description || ""}</div>
         <div class="step-badges">
+          ${userSelectedBadge}
+          ${genreBadge}
           <span class="badge-tag badge-open">✓ Operating Window: ${act.place.opening_time} - ${act.place.closing_time}</span>
           <span class="badge-tag badge-buffer">+${act.buffer_mins}m Transition Buffer</span>
           <span class="badge-tag badge-delay">★ ${act.place.rating} Rating</span>
+          ${sourceBadge}
         </div>
       `;
       timelineContainer.appendChild(step);
@@ -1180,6 +1730,10 @@ function renderMap(variant) {
         ? `<div>🛺 <strong>Local Feeder (${leg.local_vehicle_type || 'Shared Auto'}):</strong> ₹${leg.local_transit_cost.toLocaleString()}</div>`
         : "";
 
+      const trainPopupContent = (leg.selected_mode === 'train' && leg.train_number)
+        ? `<div style="margin-top:4px; padding:4px 8px; background:#dcfce7; border-radius:4px; color:#166534; font-size:0.75rem;">🚆 <strong>Train #${leg.train_number}:</strong> ${leg.train_name || ''}<br/>⏰ Dep: <strong>${leg.departure_time || '--:--'}</strong> ➔ Arr: <strong>${leg.arrival_time || '--:--'}</strong></div>`
+        : "";
+
       const marker = L.marker(midCoord, { icon: badgeDiv }).bindPopup(`
         <div class="transit-popup-card">
           <div class="transit-popup-header">
@@ -1188,6 +1742,7 @@ function renderMap(variant) {
           </div>
           <div class="transit-popup-meta">Mode: <strong>${modeName}</strong> &bull; ${leg.distance_km} km &bull; ~${leg.buffered_duration_hours} hrs</div>
           ${hubsContent}
+          ${trainPopupContent}
           <div class="transit-popup-costs">
             <div>Total Segment Transit: <strong>₹${leg.estimated_transit_cost.toLocaleString()}</strong></div>
             ${ticketsContent}
@@ -1233,6 +1788,10 @@ function renderMap(variant) {
         ? `<div>🛺 <strong>Shared Auto Feeder:</strong> ₹${retTransit.local_transit_cost.toLocaleString()}</div>`
         : "";
 
+      const retTrainPopup = (retTransit.mode === 'train' && retTransit.train_number)
+        ? `<div style="margin-top:4px; padding:4px 8px; background:#dcfce7; border-radius:4px; color:#166534; font-size:0.75rem;">🚆 <strong>Train #${retTransit.train_number}:</strong> ${retTransit.train_name || ''}<br/>⏰ Dep: <strong>${retTransit.departure_time || '--:--'}</strong> ➔ Arr: <strong>${retTransit.arrival_time || '--:--'}</strong></div>`
+        : "";
+
       const retMarker = L.marker(returnMid, { icon: retBadgeDiv }).bindPopup(`
         <div class="transit-popup-card">
           <div class="transit-popup-header">
@@ -1241,6 +1800,7 @@ function renderMap(variant) {
           </div>
           <div class="transit-popup-meta">Mode: <strong>${retName}</strong> &bull; ${retTransit.distance_km} km &bull; ~${retTransit.duration_hours} hrs</div>
           ${retHubs}
+          ${retTrainPopup}
           <div class="transit-popup-costs">
             <div>Return Transit Total: <strong>₹${retTransit.total_cost.toLocaleString()}</strong></div>
             ${retTickets}
@@ -1479,3 +2039,205 @@ async function openMyBookingsModal() {
 function closeMyBookingsModal() {
   document.getElementById("myBookingsModal").style.display = "none";
 }
+
+// ==========================================
+// Google Maps API Key & Status Management
+// ==========================================
+async function checkGoogleMapsStatus() {
+  try {
+    const res = await fetch("/api/maps/status");
+    const data = await res.json();
+    const dot = document.getElementById("mapsIndicatorDot");
+    const label = document.getElementById("mapsStatusLabel");
+    const banner = document.getElementById("mapsKeyStatusBanner");
+    const help = document.getElementById("mapsKeyActivationHelp");
+
+    if (data.active) {
+      if (dot) dot.className = "gmaps-indicator-dot active";
+      if (label) label.textContent = "Google Maps Live";
+      if (banner) {
+        banner.className = "maps-key-status-banner banner-active";
+        banner.innerHTML = "✅ <strong>Google Maps Live:</strong> Directions & Routes API active for real-time fares and routes.";
+      }
+      if (help) help.style.display = "none";
+    } else if (data.key_configured) {
+      if (dot) dot.className = "gmaps-indicator-dot pending";
+      if (label) label.textContent = "Google Maps (Key Set)";
+      if (banner) {
+        banner.className = "maps-key-status-banner banner-pending";
+        banner.innerHTML = `⚠️ <strong>Key Configured:</strong> Routes / Directions API needs activation in your Google Cloud Console.<br><span style="font-size:0.75rem; color:#b45309;">${data.last_error || 'Enable Routes API to activate live fares'}</span>`;
+      }
+      if (help) help.style.display = "block";
+    } else {
+      if (dot) dot.className = "gmaps-indicator-dot inactive";
+      if (label) label.textContent = "Setup Google Maps";
+      if (banner) {
+        banner.className = "maps-key-status-banner banner-inactive";
+        banner.innerHTML = "ℹ️ <strong>No Key Configured:</strong> Using calibrated Indian transit fare & routing engine.";
+      }
+      if (help) help.style.display = "none";
+    }
+  } catch (e) {
+    console.debug("Failed to check Google Maps status:", e);
+  }
+}
+
+async function saveGoogleMapsKey() {
+  const input = document.getElementById("inputGoogleMapsKey");
+  const key = (input ? input.value : "").trim();
+  if (!key) {
+    alert("Please enter a Google Maps API Key.");
+    return;
+  }
+  try {
+    const res = await fetch("/api/maps/key", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key })
+    });
+    const data = await res.json();
+    alert(data.message || "Key saved");
+    document.getElementById("mapsKeyModal").style.display = "none";
+    await checkGoogleMapsStatus();
+    triggerPlanning();
+  } catch (err) {
+    alert("Error saving key: " + err.message);
+  }
+}
+
+function openMapsKeyModal() {
+  document.getElementById("mapsKeyModal").style.display = "flex";
+  checkGoogleMapsStatus();
+}
+
+function closeMapsKeyModal() {
+  document.getElementById("mapsKeyModal").style.display = "none";
+}
+
+// ==========================================
+// Train Timetable & Route Halts Modal
+// ==========================================
+async function openTrainTimetableModal(trainNumber, trainName) {
+  const modal = document.getElementById("trainTimetableModal");
+  const title = document.getElementById("timetableModalTitle");
+  const body = document.getElementById("timetableModalBody");
+
+  title.innerHTML = `🚆 Timetable & Actual Halts: #${trainNumber} ${trainName || ''}`;
+  body.innerHTML = `<div style="text-align:center; padding:30px; color:#64748b;">⏳ Fetching live route and halts timetable from RailRadar API...</div>`;
+  modal.style.display = "flex";
+
+  try {
+    const res = await fetch(`/api/trains/${trainNumber}/details`);
+    const data = await res.json();
+    if (data.success && data.details) {
+      const d = data.details;
+      const halts = d.route_stops || [];
+      const passengerHalts = halts.filter(h => h.is_halt !== false);
+      const coachPos = d.coach_position || "";
+      const classes = (d.classes || []).join(", ");
+      const seats = d.seat_status || [];
+
+      let seatsHtml = '';
+      if (seats.length > 0) {
+        seatsHtml = `
+          <div class="timetable-seats-summary" style="margin-bottom:12px; background:#f1f5f9; padding:10px; border-radius:8px;">
+            <div style="font-size:0.8rem; font-weight:700; color:#334155; margin-bottom:6px;">💺 Real-Time Seat Status & Confirmed Ticket Chance (RailRadar):</div>
+            <div style="display:flex; flex-wrap:wrap; gap:6px;">
+              ${seats.map(s => `
+                <span class="seat-badge ${s.badge}" style="font-size:0.8rem; padding:4px 10px;">
+                  <strong>${s.class_code}</strong> (${s.class_name}): <strong>${s.status_code}</strong> &bull; ₹${s.fare} (${s.confirmation_chance})
+                </span>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      let coachHtml = coachPos ? `
+        <div class="timetable-coach-summary" style="margin-bottom:12px; font-size:0.8rem; color:#475569; background:#fff; border:1px solid #e2e8f0; padding:8px 12px; border-radius:6px;">
+          <strong>Coach Sequence:</strong> <code class="coach-pos-code" style="background:#f8fafc; padding:2px 6px; border-radius:4px;">${coachPos}</code>
+        </div>
+      ` : '';
+
+      let tableRows = passengerHalts.map(h => `
+        <tr class="${h.is_halt ? 'row-halt' : 'row-pass'}" style="border-bottom:1px solid #e2e8f0;">
+          <td style="font-weight:600; text-align:center; padding:8px;">${h.sequence}</td>
+          <td style="padding:8px;">
+            <strong>${h.station_name}</strong>
+            <span style="font-size:0.75rem; color:#64748b; margin-left:4px;">(${h.station_code})</span>
+          </td>
+          <td style="text-align:center; padding:8px;">${h.arrival}</td>
+          <td style="text-align:center; padding:8px;">${h.departure}</td>
+          <td style="text-align:center; padding:8px;">${h.halt_minutes > 0 ? `${h.halt_minutes} mins` : '--'}</td>
+          <td style="text-align:center; padding:8px;">${h.distance_km} km</td>
+          <td style="text-align:center; padding:8px;">Platform ${h.platform || '1'}</td>
+        </tr>
+      `).join('');
+
+      body.innerHTML = `
+        ${seatsHtml}
+        ${coachHtml}
+        <div style="font-size:0.8rem; color:#64748b; margin-bottom:8px; display:flex; justify-content:space-between;">
+          <span>Showing <strong>${passengerHalts.length}</strong> scheduled passenger halts</span>
+          <span>Distance: <strong>${d.distance_km} km</strong> &bull; Classes: <strong>${classes}</strong></span>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="timetable-table" style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+            <thead>
+              <tr style="background:#f8fafc; border-bottom:2px solid #cbd5e1; text-align:left;">
+                <th style="padding:8px; text-align:center;">#</th>
+                <th style="padding:8px;">Station Name</th>
+                <th style="padding:8px; text-align:center;">Arrival</th>
+                <th style="padding:8px; text-align:center;">Departure</th>
+                <th style="padding:8px; text-align:center;">Halt</th>
+                <th style="padding:8px; text-align:center;">Distance</th>
+                <th style="padding:8px; text-align:center;">Platform</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+        </div>
+      `;
+    } else {
+      body.innerHTML = `<div style="color:#ef4444; padding:20px;">Could not load timetable for train #${trainNumber}.</div>`;
+    }
+  } catch (err) {
+    body.innerHTML = `<div style="color:#ef4444; padding:20px;">Failed to load timetable: ${err.message}</div>`;
+  }
+}
+
+function closeTrainTimetableModal() {
+  document.getElementById("trainTimetableModal").style.display = "none";
+}
+
+// Global modal & timetable click delegation
+document.addEventListener("DOMContentLoaded", () => {
+  checkGoogleMapsStatus();
+
+  const mapsBtn = document.getElementById("openMapsKeyBtn");
+  if (mapsBtn) mapsBtn.addEventListener("click", openMapsKeyModal);
+
+  const saveMapsBtn = document.getElementById("saveMapsKeyBtn");
+  if (saveMapsBtn) saveMapsBtn.addEventListener("click", saveGoogleMapsKey);
+
+  const closeMapsBtn = document.getElementById("closeMapsKeyBtn");
+  if (closeMapsBtn) closeMapsBtn.addEventListener("click", closeMapsKeyModal);
+
+  const closeMapsX = document.getElementById("closeMapsKeyModalBtn");
+  if (closeMapsX) closeMapsX.addEventListener("click", closeMapsKeyModal);
+
+  const closeTimetableX = document.getElementById("closeTimetableModalBtn");
+  if (closeTimetableX) closeTimetableX.addEventListener("click", closeTrainTimetableModal);
+
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".view-timetable-btn");
+    if (btn) {
+      const tNum = btn.dataset.train;
+      const tName = btn.dataset.name;
+      openTrainTimetableModal(tNum, tName);
+    }
+  });
+});
+

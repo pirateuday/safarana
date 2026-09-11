@@ -43,6 +43,76 @@ def get_presets():
     """Returns curated preset corridors for instant 1-click planning."""
     return {"presets": orchestrator.get_preset_trips()}
 
+@app.get("/api/trains")
+def get_trains(origin: str, destination: str, date: Optional[str] = None):
+    """Retrieves live or cached trains between two cities/stations using RailRadar API with mock fallback."""
+    from tools.railway_tools import get_trains_between
+    try:
+        trains = get_trains_between(origin, destination, travel_date=date)
+        return {
+            "origin": origin,
+            "destination": destination,
+            "date": date,
+            "count": len(trains),
+            "trains": trains
+        }
+    except Exception as e:
+        logger.error(f"Error fetching trains: {e}")
+        return {"origin": origin, "destination": destination, "date": date, "count": 0, "trains": []}
+
+@app.get("/api/maps/status")
+def get_maps_status():
+    """Returns the live status of Google Maps API and key configuration."""
+    from tools.google_maps_tools import get_google_maps_status
+    return get_google_maps_status()
+
+@app.post("/api/maps/key")
+def update_maps_key(data: Dict[str, str]):
+    """Updates or sets the Google Maps API key dynamically."""
+    import config
+    from tools.google_maps_tools import api_status_info
+    key = data.get("key", "").strip()
+    if key:
+        config.GOOGLE_MAPS_API_KEY = key
+        api_status_info["key_configured"] = True
+        return {"success": True, "message": "Google Maps API Key updated successfully"}
+    return {"success": False, "message": "No key provided"}
+
+@app.get("/api/trains/{train_number}/details")
+def get_train_timetable_details(train_number: str):
+    """Returns actual timetable halts, coach position, classes, and seat availability for a train."""
+    from tools.railway_tools import get_train_full_details
+    try:
+        details = get_train_full_details(train_number)
+        return {"success": True, "details": details}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch train details: {str(e)}")
+
+@app.get("/api/trains/{train_number}/live")
+def get_train_live_tracking(train_number: str):
+    """Returns live running delay, current station location, and status for a train."""
+    from tools.railway_tools import get_train_live_status
+    try:
+        status = get_train_live_status(train_number)
+        return {"success": True, "live": status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch train live status: {str(e)}")
+
+@app.get("/api/spots")
+def get_spots(city: str, genre: Optional[str] = None):
+    """Retrieves list of tourist spots, genres, timings, and entry fees from OpenStreetMap / Overpass / OpenTripMap / Curated database."""
+    from tools.poi_tools import get_city_spots
+    try:
+        spots = get_city_spots(city_name=city, genre_filter=genre)
+        return {
+            "city": city,
+            "genre": genre,
+            "count": len(spots),
+            "spots": spots
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch spots: {str(e)}")
+
 @app.post("/api/plan", response_model=TripPlan)
 def plan_trip(trip_input: TripInput):
     """Executes the multi-agent planning pipeline to generate 4 Pareto-optimal itineraries."""

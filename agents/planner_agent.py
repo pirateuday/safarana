@@ -56,15 +56,29 @@ class PlannerAgent(BaseAgent):
             stopovers=stopover_names,
             travel_mode=trip_input.travel_mode.value,
             leg_modes=leg_modes_list,
-            party_size=trip_input.party_size
+            party_size=trip_input.party_size,
+            selected_trains=trip_input.selected_trains,
+            api_key=trip_input.google_maps_api_key
         )
+
+        # Consolidated user-selected places dictionary
+        merged_places_by_city: Dict[str, List[str]] = {}
+        for c, s_list in (trip_input.places_by_city or {}).items():
+            merged_places_by_city[c] = list(s_list)
+        if trip_input.selected_places:
+            merged_places_by_city.setdefault(trip_input.destination, []).extend(trip_input.selected_places)
+        for stop in (trip_input.stopovers or []):
+            if stop.location and stop.selected_places:
+                merged_places_by_city.setdefault(stop.location, []).extend(stop.selected_places)
 
         # STAGE 2: SPOT AGENT (Discovery & Opening Hours)
         spots = self.spot_agent.discover_spots(
             destination=trip_input.destination,
             corridor_stops=route.waypoints,
             interests=trip_input.interests,
-            stopovers=stopover_names
+            stopovers=stopover_names,
+            user_selected_places=trip_input.selected_places,
+            places_by_city=merged_places_by_city
         )
 
         # STAGE 3: FOOD & STAY AGENT
@@ -128,13 +142,19 @@ class PlannerAgent(BaseAgent):
         # STAGE 4: BUILD PARETO-OPTIMAL VARIANTS
         variants: Dict[str, ItineraryVariant] = {}
 
+        def select_variant_spots(candidate_spots: List[Place], target_count: int) -> List[Place]:
+            user_spots = [p for p in candidate_spots if p.user_selected]
+            other_spots = [p for p in candidate_spots if not p.user_selected]
+            needed = max(0, target_count - len(user_spots))
+            return user_spots + other_spots[:needed]
+
         # 4.1. BALANCED VARIANT (Curated blend)
         variants["balanced"] = self._create_variant(
             variant_type="balanced",
             title="Balanced & Curated (Recommended)",
             tagline="Ideal harmony of sightseeing, authentic highway food, comfortable stay, and generous buffers.",
             route=route,
-            spots=spots[:max(5, len(stay_cities) * 3)],
+            spots=select_variant_spots(spots, max(5, len(stay_cities) * 3)),
             stay=primary_hotel,
             highway_meals=highway_meals,
             city_meals=city_meals,
@@ -146,7 +166,7 @@ class PlannerAgent(BaseAgent):
         )
 
         # 4.2. FASTEST VARIANT (Direct travel, minimal friction)
-        fast_spots = spots[:max(3, len(stay_cities) * 2)]
+        fast_spots = select_variant_spots(spots, max(3, len(stay_cities) * 2))
         variants["fastest"] = self._create_variant(
             variant_type="fastest",
             title="Fastest / Direct Express",
@@ -165,7 +185,8 @@ class PlannerAgent(BaseAgent):
 
         # 4.3. BUDGET VARIANT
         budget_hotel = budget_hotels_by_city.get(trip_input.destination, primary_hotel)
-        budget_spots = sorted(spots, key=lambda x: x.entry_fee_per_person)[:max(4, len(stay_cities) * 2)]
+        sorted_by_fee = sorted(spots, key=lambda x: (not x.user_selected, x.entry_fee_per_person))
+        budget_spots = select_variant_spots(sorted_by_fee, max(4, len(stay_cities) * 2))
         variants["cheapest"] = self._create_variant(
             variant_type="cheapest",
             title="Budget Explorer & Roadside Dhabas",
@@ -256,7 +277,8 @@ class PlannerAgent(BaseAgent):
             stopovers=trip_input.stopovers,
             hotels_by_city=hotels_by_city,
             dining_by_city=dining_by_city,
-            return_travel_mode=trip_input.return_travel_mode
+            return_travel_mode=trip_input.return_travel_mode,
+            return_train_number=trip_input.return_train_number
         )
 
         # Attach weather to days

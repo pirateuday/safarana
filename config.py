@@ -4,9 +4,10 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 DATABASE_PATH = str(BASE_DIR / "smartroute_cache.db")
 
-# Optional External API Keys (Can be set via env variables)
+# Google Maps API Key (provided by user, with env override)
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "AIzaSyBD9Cks3UYTRbIOUafiGCCMRImc1VTBPOs")
+GOOGLE_PLACES_KEY = os.getenv("GOOGLE_PLACES_KEY", GOOGLE_MAPS_API_KEY)
 ORS_API_KEY = os.getenv("ORS_API_KEY", "")
-GOOGLE_PLACES_KEY = os.getenv("GOOGLE_PLACES_KEY", "")
 RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
 
 # OSRM Public Routing URL (Free, no key required)

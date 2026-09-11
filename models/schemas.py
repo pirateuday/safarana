@@ -25,6 +25,20 @@ class TransportOption(BaseModel):
     departure_hub: str = ""
     arrival_hub: str = ""
     local_vehicle_type: str = ""
+    train_number: Optional[str] = None
+    train_name: Optional[str] = None
+    departure_time: Optional[str] = None
+    arrival_time: Optional[str] = None
+    available_trains: List[Dict[str, Any]] = Field(default_factory=list)
+    fare_source: str = "calibrated_model"
+    fare_currency: str = "₹"
+    fare_breakdown: Dict[str, Any] = Field(default_factory=dict)
+    seat_status: List[Dict[str, Any]] = Field(default_factory=list)
+    coach_position: Optional[str] = None
+    route_stops: List[Dict[str, Any]] = Field(default_factory=list)
+    live_status: Optional[Dict[str, Any]] = None
+    live_delay_mins: int = 0
+    live_status_text: str = "Scheduled"
 
 class InterestType(str, Enum):
     heritage = "heritage"
@@ -62,6 +76,9 @@ class Place(BaseModel):
     coords: Coordinates
     category: str
     interests: List[str] = Field(default_factory=list)
+    genre: Optional[str] = None
+    source: str = "curated"
+    user_selected: bool = False
     typical_duration_mins: int = 90
     entry_fee_per_person: float = 0.0
     rating: float = 4.5
@@ -151,6 +168,7 @@ class StopoverInput(BaseModel):
     location: str
     stay_days: Optional[int] = None # None or 0 = "Not Sure / AI Optimal"
     travel_mode: Optional[str] = None # Optional mode for this leg
+    selected_places: List[str] = Field(default_factory=list)
 
 class RouteLeg(BaseModel):
     from_place: str
@@ -167,6 +185,20 @@ class RouteLeg(BaseModel):
     departure_hub: str = ""
     arrival_hub: str = ""
     local_vehicle_type: str = ""
+    train_number: Optional[str] = None
+    train_name: Optional[str] = None
+    departure_time: Optional[str] = None
+    arrival_time: Optional[str] = None
+    available_trains: List[Dict[str, Any]] = Field(default_factory=list)
+    fare_source: str = "calibrated_model"
+    fare_currency: str = "₹"
+    fare_breakdown: Dict[str, Any] = Field(default_factory=dict)
+    seat_status: List[Dict[str, Any]] = Field(default_factory=list)
+    coach_position: Optional[str] = None
+    route_stops: List[Dict[str, Any]] = Field(default_factory=list)
+    live_status: Optional[Dict[str, Any]] = None
+    live_delay_mins: int = 0
+    live_status_text: str = "Scheduled"
 
 class RouteOption(BaseModel):
     origin: str
@@ -179,23 +211,29 @@ class RouteOption(BaseModel):
     estimated_transit_cost: float
     corridor_geometry: List[Coordinates] = Field(default_factory=list)
     selected_mode: str = "driving"
+    fare_source: str = "calibrated_model"
 
 class TripInput(BaseModel):
     origin: str = "Delhi"
     destination: str = "Jaipur"
     stopovers: List[StopoverInput] = Field(default_factory=list)
+    selected_places: List[str] = Field(default_factory=list)
+    places_by_city: Dict[str, List[str]] = Field(default_factory=dict)
     budget: float = 15000.0
     start_date: str = "2026-10-01"
     end_date: str = "2026-10-03"
     travel_mode: TravelMode = TravelMode.driving
     leg_modes: Dict[str, str] = Field(default_factory=dict) # e.g. {"0": "train", "1": "bus"}
     return_travel_mode: Optional[str] = None
+    selected_trains: Dict[str, str] = Field(default_factory=dict) # e.g. {"0": "12015"}
+    return_train_number: Optional[str] = None
     interests: List[str] = Field(default_factory=lambda: ["heritage", "food", "scenic"])
     food_preference: FoodPreference = FoodPreference.all
     stay_preference: StayPreference = StayPreference.standard_hotel
     party_size: int = 2
     start_time_of_day: str = "07:30"
     buffer_factor: float = 0.18
+    google_maps_api_key: Optional[str] = None
 
 class FeasibilityCheck(BaseModel):
     passed: bool = True

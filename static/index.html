@@ -24,7 +24,10 @@
         <div class="brand-sub">Constraint-Solving Trip Engine &bull; Budget &bull; Time &bull; Open Hours &bull; Buffers</div>
       </div>
     </div>
-    <div class="nav-actions">
+      <button class="btn-secondary gmaps-status-btn" id="openMapsKeyBtn" title="Google Maps Routing & Transit Fares Engine">
+        <span class="gmaps-indicator-dot" id="mapsIndicatorDot"></span>
+        <span id="mapsStatusLabel">Google Maps</span>
+      </button>
       <button class="btn-secondary" id="newTripBtn" title="Reset form and select new custom origin and destination">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>
         Reset Route
@@ -145,6 +148,30 @@
                     <button type="button" class="city-chip" data-target="destination" data-city="Manali">Manali</button>
                     <button type="button" class="city-chip" data-target="destination" data-city="Agra">Agra</button>
                     <button type="button" class="city-chip" data-target="destination" data-city="Udaipur">Udaipur</button>
+                  </div>
+
+                  <!-- Interactive Spot Selection Panel for Destination -->
+                  <div class="spot-picker-container" id="destSpotPicker">
+                    <button type="button" class="spot-picker-toggle" id="destSpotPickerToggle">
+                      <span class="spot-picker-toggle-left">
+                        <span class="spot-picker-icon">🏛️</span>
+                        <span>Select Places to Visit in <strong id="destSpotPickerCityName">Jaipur</strong></span>
+                        <span class="spot-picker-count-badge" id="destSpotSelectedBadge">0 Selected</span>
+                      </span>
+                      <svg class="spot-picker-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="spot-picker-body" id="destSpotPickerBody" style="display: none;">
+                      <div class="spot-picker-sub">
+                        <span>Extracted from <strong>OpenStreetMap / Overpass & OpenTripMap</strong></span>
+                        <button type="button" class="btn-refresh-spots" id="destRefreshSpotsBtn" title="Refresh places">🔄 Refresh</button>
+                      </div>
+                      <div class="genre-filter-bar" id="destGenreFilters">
+                        <!-- Populated dynamically -->
+                      </div>
+                      <div class="spot-selection-list" id="destSpotsList">
+                        <div class="spots-loading-hint">Loading places...</div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -410,6 +437,51 @@
         <button class="btn-close" id="closeBookingsModalBtn">&times;</button>
       </div>
       <div class="modal-body" id="myBookingsList"></div>
+    </div>
+  </div>
+
+  <!-- Google Maps Key & Status Modal -->
+  <div class="modal-backdrop" id="mapsKeyModal" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>🌐 Google Maps Routing & Fares Engine</h3>
+        <button class="btn-close" id="closeMapsKeyModalBtn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="maps-key-status-banner" id="mapsKeyStatusBanner">
+          Checking status...
+        </div>
+        <p class="settings-hint" style="font-size: 0.85rem; color: #475569; margin: 10px 0;">
+          Google Maps Directions & Routes APIs evaluate live traffic-aware travel times, road geometry, and public transit fares.
+        </p>
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label for="inputGoogleMapsKey" style="font-size: 0.8rem; font-weight: 600;">Google Maps API Key</label>
+          <input type="password" id="inputGoogleMapsKey" class="form-control" placeholder="AIzaSy..." value="" style="font-family: monospace;" />
+        </div>
+        <div id="mapsKeyActivationHelp" style="display: none; margin-top: 10px; background: #fffbeb; border: 1px solid #fef3c7; padding: 10px; border-radius: 8px; font-size: 0.8rem; color: #92400e;">
+          ⚠️ <strong>Note:</strong> Ensure the <em>Routes API</em> or <em>Directions API</em> is enabled in your Google Cloud Console.
+          <div style="margin-top: 6px;">
+            <a href="https://console.developers.google.com/apis/library?filter=category:maps" target="_blank" style="color: #2563eb; font-weight: 600; text-decoration: underline;">Open Google Cloud Console Library ↗</a>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="closeMapsKeyBtn">Close</button>
+        <button class="btn-primary" id="saveMapsKeyBtn">Save API Key</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Train Timetable & Actual Halts Modal -->
+  <div class="modal-backdrop" id="trainTimetableModal" style="display:none;">
+    <div class="modal-card wide">
+      <div class="modal-header">
+        <h3 id="timetableModalTitle">🚆 Train Route Timetable & Halts</h3>
+        <button class="btn-close" id="closeTimetableModalBtn">&times;</button>
+      </div>
+      <div class="modal-body" id="timetableModalBody" style="max-height: 65vh; overflow-y: auto;">
+        Loading timetable...
+      </div>
     </div>
   </div>
 

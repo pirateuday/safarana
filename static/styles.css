@@ -1928,6 +1928,122 @@ body {
   color: #0f172a;
 }
 
+/* Train Timetable & RailRadar Live Train Selector Styles */
+.train-selector-section {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.train-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #166534;
+}
+
+.badge-live-rail {
+  font-size: 0.72rem;
+  color: #16a34a;
+  font-weight: 800;
+  background: #ffffff;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  border: 1px solid #86efac;
+}
+
+.train-pills-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
+
+.train-pills-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.train-pills-scroll::-webkit-scrollbar-thumb {
+  background: #86efac;
+  border-radius: 9999px;
+}
+
+.train-pill-btn {
+  flex: 0 0 auto;
+  min-width: 175px;
+  max-width: 220px;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.train-pill-btn:hover {
+  border-color: #16a34a;
+  background: #fcfdfd;
+  transform: translateY(-1px);
+}
+
+.train-pill-btn.active {
+  background: #ffffff;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 2.5px rgba(22, 163, 74, 0.25);
+}
+
+.train-pill-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.train-num {
+  font-family: monospace;
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: #15803d;
+  background: #dcfce7;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.train-times {
+  font-weight: 700;
+  font-size: 0.76rem;
+  color: #0f172a;
+}
+
+.train-pill-name {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.train-pill-meta {
+  font-size: 0.68rem;
+  color: #64748b;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 /* Print Stylesheet for Trip Brief */
 @media print {
   body {
@@ -1960,3 +2076,562 @@ body {
     margin-bottom: 12px !important;
   }
 }
+
+/* ============================================================
+   Interactive Spot & Place Selection (OpenStreetMap / Overpass)
+   ============================================================ */
+.spot-picker-container {
+  margin-top: 10px;
+  background: #080f1e;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.spot-picker-container.open {
+  border-color: #3b82f6;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.spot-picker-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #0f172a;
+  border: none;
+  color: #e2e8f0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.spot-picker-toggle:hover {
+  background: #1e293b;
+}
+
+.spot-picker-toggle-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.spot-picker-icon {
+  font-size: 0.95rem;
+}
+
+.spot-picker-count-badge {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 9999px;
+}
+
+.spot-picker-count-badge.has-selected {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.5);
+}
+
+.spot-picker-arrow {
+  color: #94a3b8;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.spot-picker-container.open .spot-picker-arrow {
+  transform: rotate(180deg);
+}
+
+.spot-picker-body {
+  padding: 10px;
+  background: #0b1324;
+  border-top: 1px solid #1e293b;
+}
+
+.spot-picker-sub {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.68rem;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.spot-picker-sub strong {
+  color: #cbd5e1;
+}
+
+.btn-refresh-spots {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-refresh-spots:hover {
+  background: #334155;
+  color: #f8fafc;
+  border-color: #60a5fa;
+}
+
+/* Genre Filter Bar */
+.genre-filter-bar {
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+  scrollbar-width: thin;
+}
+
+.genre-filter-chip {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #cbd5e1;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.genre-filter-chip:hover {
+  background: #283548;
+  color: #ffffff;
+}
+
+.genre-filter-chip.active {
+  background: #3b82f6;
+  border-color: #60a5fa;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.4);
+}
+
+/* Spot Selection List */
+.spot-selection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.spot-selection-list::-webkit-scrollbar {
+  width: 4px;
+}
+.spot-selection-list::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+.spots-loading-hint {
+  font-size: 0.75rem;
+  color: #64748b;
+  text-align: center;
+  padding: 14px 0;
+}
+
+/* Spot Selection Item */
+.spot-selection-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 7px 9px;
+  background: #111b2f;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.spot-selection-item:hover {
+  background: #16243f;
+  border-color: #3b82f6;
+}
+
+.spot-selection-item.selected {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.4);
+}
+
+.spot-checkbox {
+  margin-top: 3px;
+  accent-color: #3b82f6;
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.spot-item-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.spot-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.spot-item-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spot-selection-item.selected .spot-item-name {
+  color: #93c5fd;
+}
+
+.spot-item-rating {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+.spot-item-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-genre {
+  background: rgba(139, 92, 246, 0.18);
+  color: #c4b5fd;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.badge-timing {
+  background: rgba(16, 185, 129, 0.15);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.badge-fee {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.badge-source {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+  font-size: 0.6rem;
+  font-weight: 500;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* Stopover Nested Spot Picker */
+.stopover-spot-picker {
+  margin-top: 8px;
+  border-top: 1px solid #1e293b;
+  padding-top: 6px;
+}
+
+.btn-toggle-stopover-spots {
+  background: transparent;
+  border: none;
+  color: #93c5fd;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.btn-toggle-stopover-spots:hover {
+  background: rgba(59, 130, 246, 0.15);
+  color: #ffffff;
+}
+
+/* Timeline User-Selected Badge Highlight */
+.badge-user-selected {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  border: 1px solid #fbbf24 !important;
+  box-shadow: 0 1px 4px rgba(245, 158, 11, 0.4);
+}
+
+.step-user-selected {
+  border-left: 4px solid #f59e0b !important;
+  background: #fffdfa !important;
+}
+
+/* ==========================================
+   Google Maps Status Button & Indicator
+   ========================================== */
+.gmaps-status-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.gmaps-indicator-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #94a3b8;
+  display: inline-block;
+  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.2);
+}
+
+.gmaps-indicator-dot.active {
+  background: #10b981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3), 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.gmaps-indicator-dot.pending {
+  background: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3), 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.gmaps-indicator-dot.inactive {
+  background: #64748b;
+}
+
+.maps-key-status-banner {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.banner-active {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+}
+
+.banner-pending {
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+  color: #92400e;
+}
+
+.banner-inactive {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+}
+
+/* ==========================================
+   Fare Source Badges
+   ========================================== */
+.gmaps-fare-badge {
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  border: 1px solid #34d399 !important;
+  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.25);
+}
+
+.fare-calc-badge {
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  font-weight: 600 !important;
+  border: 1px solid #bfdbfe !important;
+}
+
+/* ==========================================
+   Seat Status Badges (RailRadar)
+   ========================================== */
+.seat-status-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.seat-badges-container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.seat-row-label {
+  font-size: 0.75rem;
+  color: #475569;
+}
+
+.seat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.seat-badge.available {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.seat-badge.rac {
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1px solid #fef08a;
+}
+
+.seat-badge.waitlist {
+  background: #ffedd5;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+}
+
+.seat-badge-mini {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+  margin: 1px;
+}
+
+.seat-badge-mini.available {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.seat-badge-mini.rac {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.seat-badge-mini.waitlist {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.train-pill-seats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.seat-fare {
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+.coach-pos-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.7rem;
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: #334155;
+  word-break: break-all;
+}
+
+/* ==========================================
+   Timetable Modal & Action Buttons
+   ========================================== */
+.btn-sm-action {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #2563eb;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-sm-action:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.timetable-btn-row {
+  margin-top: 4px;
+}
+
+.timetable-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.timetable-table th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  z-index: 1;
+}
+
+.timetable-table tr:hover {
+  background: #f8fafc;
+}
+
+.row-halt td {
+  color: #0f172a;
+}
+
+.row-pass td {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+

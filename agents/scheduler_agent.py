@@ -89,7 +89,7 @@ class SchedulerAgent(BaseAgent):
 
         return day_cities, notes
 
-    def _find_leg_for_pair(self, from_c: str, to_c: str, route: RouteOption, party_size: int, default_mode: str) -> Dict[str, Any]:
+    def _find_leg_for_pair(self, from_c: str, to_c: str, route: RouteOption, party_size: int, default_mode: str, selected_train: Optional[str] = None) -> Dict[str, Any]:
         """Finds matching route leg or dynamically computes transit options for city pair."""
         f_norm = from_c.strip().lower()
         t_norm = to_c.strip().lower()
@@ -104,10 +104,24 @@ class SchedulerAgent(BaseAgent):
                     "local_transit_cost": leg.local_transit_cost,
                     "departure_hub": leg.departure_hub,
                     "arrival_hub": leg.arrival_hub,
-                    "local_vehicle_type": leg.local_vehicle_type
+                    "local_vehicle_type": leg.local_vehicle_type,
+                    "train_number": leg.train_number,
+                    "train_name": leg.train_name,
+                    "departure_time": leg.departure_time,
+                    "arrival_time": leg.arrival_time,
+                    "available_trains": leg.available_trains,
+                    "fare_source": getattr(leg, "fare_source", "calibrated_model"),
+                    "fare_currency": getattr(leg, "fare_currency", "₹"),
+                    "fare_breakdown": getattr(leg, "fare_breakdown", {}),
+                    "seat_status": getattr(leg, "seat_status", []),
+                    "coach_position": getattr(leg, "coach_position", ""),
+                    "route_stops": getattr(leg, "route_stops", []),
+                    "live_status": getattr(leg, "live_status", {}),
+                    "live_delay_mins": getattr(leg, "live_delay_mins", 0),
+                    "live_status_text": getattr(leg, "live_status_text", "Scheduled")
                 }
         # Fallback if not directly in route.legs (e.g. return leg)
-        rt = get_route(from_c, to_c, travel_mode=default_mode, party_size=party_size)
+        rt = get_route(from_c, to_c, travel_mode=default_mode, party_size=party_size, selected_train_number=selected_train)
         return {
             "mode": default_mode,
             "distance_km": rt["total_distance_km"],
@@ -117,7 +131,21 @@ class SchedulerAgent(BaseAgent):
             "local_transit_cost": rt.get("local_transit_cost", 0.0),
             "departure_hub": rt.get("departure_hub", ""),
             "arrival_hub": rt.get("arrival_hub", ""),
-            "local_vehicle_type": rt.get("local_vehicle_type", "")
+            "local_vehicle_type": rt.get("local_vehicle_type", ""),
+            "train_number": rt.get("train_number"),
+            "train_name": rt.get("train_name"),
+            "departure_time": rt.get("departure_time"),
+            "arrival_time": rt.get("arrival_time"),
+            "available_trains": rt.get("available_trains", []),
+            "fare_source": rt.get("fare_source", "calibrated_model"),
+            "fare_currency": rt.get("fare_currency", "₹"),
+            "fare_breakdown": rt.get("fare_breakdown", {}),
+            "seat_status": rt.get("seat_status", []),
+            "coach_position": rt.get("coach_position", ""),
+            "route_stops": rt.get("route_stops", []),
+            "live_status": rt.get("live_status", {}),
+            "live_delay_mins": rt.get("live_delay_mins", 0),
+            "live_status_text": rt.get("live_status_text", "Scheduled")
         }
 
     def build_schedule(
@@ -135,7 +163,8 @@ class SchedulerAgent(BaseAgent):
         stopovers: Optional[List[StopoverInput]] = None,
         hotels_by_city: Optional[Dict[str, Hotel]] = None,
         dining_by_city: Optional[Dict[str, List[Restaurant]]] = None,
-        return_travel_mode: Optional[str] = None
+        return_travel_mode: Optional[str] = None,
+        return_train_number: Optional[str] = None
     ) -> List[DayItinerary]:
         self.log_step(
             recipient="Planner",
@@ -172,7 +201,9 @@ class SchedulerAgent(BaseAgent):
             matching_day_indices = [idx for idx, c in enumerate(day_cities) if c.lower() == c_name.lower()]
             if not matching_day_indices:
                 matching_day_indices = [0]
-            for i, p in enumerate(c_spots):
+            # Prioritize user-selected spots first
+            sorted_c_spots = sorted(c_spots, key=lambda s: not s.user_selected)
+            for i, p in enumerate(sorted_c_spots):
                 target_day = matching_day_indices[i % len(matching_day_indices)]
                 places_per_day[target_day].append(p)
 
@@ -197,6 +228,7 @@ class SchedulerAgent(BaseAgent):
             day_transit_cost = 350.0
             transit_mode = "local"
             transit_details = None
+            leg_info = None
 
             # 1. Start Day: Depart from Origin to active_city
             if is_start_day:
@@ -210,31 +242,60 @@ class SchedulerAgent(BaseAgent):
                 local_veh = leg_info["local_vehicle_type"] or "Shared Auto"
 
                 if transit_mode == "train":
-                    t_start = self._mins_to_time_str(current_time_mins)
-                    current_time_mins += 35
-                    t_station = self._mins_to_time_str(current_time_mins)
-                    rail_mins = max(45, int((day_transit_hours - 1.0) * 60))
-                    half_rail = rail_mins // 2
-                    current_time_mins += half_rail
-                    lunch_time = self._mins_to_time_str(current_time_mins)
-                    meals.append(Meal(
-                        meal_type="lunch",
-                        restaurant=highway_meals[0] if highway_meals else Restaurant(
-                            id=f"PANTRY-{active_city[:3]}", name=f"Railway Catering / Station Kitchen",
-                            location=dep_hub, cuisine_type="local_cuisine", avg_cost_per_person=180.0, rating=4.3
-                        ),
-                        time_slot=f"{lunch_time} - {self._mins_to_time_str(current_time_mins + 35)}",
-                        estimated_cost=180.0 * party_size
-                    ))
-                    current_time_mins += 35 + DEFAULT_STOP_BUFFER_MINUTES
-                    current_time_mins += max(30, rail_mins - half_rail)
-                    t_arr = self._mins_to_time_str(current_time_mins)
-                    current_time_mins += 35
-                    t_hotel = self._mins_to_time_str(current_time_mins)
+                    t_num = leg_info.get("train_number") or ""
+                    t_name = leg_info.get("train_name") or "Intercity Express Train"
+                    train_label = f"🚆 {t_num} {t_name}".strip() if t_num else f"🚆 {t_name}"
+
+                    if leg_info.get("departure_time") and leg_info.get("arrival_time"):
+                        train_dep = leg_info["departure_time"]
+                        train_arr = leg_info["arrival_time"]
+                        dep_mins = self._time_str_to_mins(train_dep)
+                        arr_mins = self._time_str_to_mins(train_arr)
+                        feeder_start = self._mins_to_time_str(max(300, dep_mins - 45))
+                        dep_station = self._mins_to_time_str(max(330, dep_mins - 10))
+
+                        # If train runs across midday (11:30 - 14:30), add onboard lunch
+                        if dep_mins <= 780 and arr_mins >= 750:
+                            lunch_dep = self._mins_to_time_str(max(dep_mins + 45, min(780, (dep_mins + arr_mins) // 2)))
+                            meals.append(Meal(
+                                meal_type="lunch",
+                                restaurant=highway_meals[0] if highway_meals else Restaurant(
+                                    id=f"PANTRY-{active_city[:3]}", name="IRCTC Pantry Car / Railway Catering",
+                                    location=f"Aboard {train_label}", cuisine_type="local_cuisine", avg_cost_per_person=180.0, rating=4.3
+                                ),
+                                time_slot=f"{lunch_dep} - {self._mins_to_time_str(self._time_str_to_mins(lunch_dep) + 35)}",
+                                estimated_cost=180.0 * party_size
+                            ))
+
+                        t_hotel = self._mins_to_time_str(arr_mins + 35)
+                        current_time_mins = arr_mins + 35
+                    else:
+                        feeder_start = self._mins_to_time_str(current_time_mins)
+                        current_time_mins += 35
+                        dep_station = self._mins_to_time_str(current_time_mins)
+                        train_dep = dep_station
+                        rail_mins = max(45, int((day_transit_hours - 1.0) * 60))
+                        half_rail = rail_mins // 2
+                        current_time_mins += half_rail
+                        lunch_time = self._mins_to_time_str(current_time_mins)
+                        meals.append(Meal(
+                            meal_type="lunch",
+                            restaurant=highway_meals[0] if highway_meals else Restaurant(
+                                id=f"PANTRY-{active_city[:3]}", name=f"Railway Catering / Station Kitchen",
+                                location=dep_hub, cuisine_type="local_cuisine", avg_cost_per_person=180.0, rating=4.3
+                            ),
+                            time_slot=f"{lunch_time} - {self._mins_to_time_str(current_time_mins + 35)}",
+                            estimated_cost=180.0 * party_size
+                        ))
+                        current_time_mins += 35 + DEFAULT_STOP_BUFFER_MINUTES
+                        current_time_mins += max(30, rail_mins - half_rail)
+                        train_arr = self._mins_to_time_str(current_time_mins)
+                        current_time_mins += 35
+                        t_hotel = self._mins_to_time_str(current_time_mins)
 
                     transit_details = {
                         "mode": "train",
-                        "mode_title": "Intercity Express Train",
+                        "mode_title": train_label,
                         "from_place": route.origin,
                         "to_place": active_city,
                         "distance_km": day_transit_km,
@@ -245,10 +306,15 @@ class SchedulerAgent(BaseAgent):
                         "departure_hub": dep_hub,
                         "arrival_hub": arr_hub,
                         "local_vehicle_type": local_veh,
+                        "train_number": leg_info.get("train_number"),
+                        "train_name": leg_info.get("train_name"),
+                        "departure_time": leg_info.get("departure_time"),
+                        "arrival_time": leg_info.get("arrival_time"),
+                        "available_trains": leg_info.get("available_trains", []),
                         "steps": [
-                            {"title": f"Local Shared Auto to {dep_hub}", "time": f"{t_start} - {t_station}", "cost": 140.0, "vehicle": "Shared Auto"},
-                            {"title": f"Intercity Express Train: {dep_hub} ➔ {arr_hub}", "time": f"{t_station} - {t_arr}", "cost": leg_info["ticket_cost"], "vehicle": "Express Train"},
-                            {"title": f"Local Shared Auto from {arr_hub} to Stay", "time": f"{t_arr} - {t_hotel}", "cost": 160.0, "vehicle": "Shared Auto"}
+                            {"title": f"Local Shared Auto / Metro to {dep_hub}", "time": f"{feeder_start} - {dep_station}", "cost": 140.0, "vehicle": "Shared Auto"},
+                            {"title": f"Express Train ({train_label}): {dep_hub} ➔ {arr_hub}", "time": f"{train_dep} - {train_arr}", "cost": leg_info["ticket_cost"], "vehicle": train_label},
+                            {"title": f"Local Shared Auto from {arr_hub} to Stay", "time": f"{train_arr} - {t_hotel}", "cost": 160.0, "vehicle": "Shared Auto"}
                         ]
                     }
                 elif transit_mode == "bus":
@@ -381,18 +447,33 @@ class SchedulerAgent(BaseAgent):
                 local_veh = leg_info["local_vehicle_type"] or "Shared Auto"
 
                 if transit_mode == "train":
-                    t_start = self._mins_to_time_str(current_time_mins)
-                    current_time_mins += 30
-                    t_station = self._mins_to_time_str(current_time_mins)
-                    rail_mins = max(40, int((day_transit_hours - 1.0) * 60))
-                    current_time_mins += rail_mins
-                    t_arr = self._mins_to_time_str(current_time_mins)
-                    current_time_mins += 30
-                    t_hotel = self._mins_to_time_str(current_time_mins)
+                    t_num = leg_info.get("train_number") or ""
+                    t_name = leg_info.get("train_name") or "Intercity Express Train"
+                    train_label = f"🚆 {t_num} {t_name}".strip() if t_num else f"🚆 {t_name}"
+
+                    if leg_info.get("departure_time") and leg_info.get("arrival_time"):
+                        train_dep = leg_info["departure_time"]
+                        train_arr = leg_info["arrival_time"]
+                        dep_mins = self._time_str_to_mins(train_dep)
+                        arr_mins = self._time_str_to_mins(train_arr)
+                        feeder_start = self._mins_to_time_str(max(300, dep_mins - 45))
+                        dep_station = self._mins_to_time_str(max(330, dep_mins - 10))
+                        t_hotel = self._mins_to_time_str(arr_mins + 30)
+                        current_time_mins = arr_mins + 30
+                    else:
+                        feeder_start = self._mins_to_time_str(current_time_mins)
+                        current_time_mins += 30
+                        dep_station = self._mins_to_time_str(current_time_mins)
+                        train_dep = dep_station
+                        rail_mins = max(40, int((day_transit_hours - 1.0) * 60))
+                        current_time_mins += rail_mins
+                        train_arr = self._mins_to_time_str(current_time_mins)
+                        current_time_mins += 30
+                        t_hotel = self._mins_to_time_str(current_time_mins)
 
                     transit_details = {
                         "mode": "train",
-                        "mode_title": "Intercity Express Train",
+                        "mode_title": train_label,
                         "from_place": prev_city,
                         "to_place": active_city,
                         "distance_km": day_transit_km,
@@ -403,10 +484,15 @@ class SchedulerAgent(BaseAgent):
                         "departure_hub": dep_hub,
                         "arrival_hub": arr_hub,
                         "local_vehicle_type": local_veh,
+                        "train_number": leg_info.get("train_number"),
+                        "train_name": leg_info.get("train_name"),
+                        "departure_time": leg_info.get("departure_time"),
+                        "arrival_time": leg_info.get("arrival_time"),
+                        "available_trains": leg_info.get("available_trains", []),
                         "steps": [
-                            {"title": f"Shared Auto to {dep_hub}", "time": f"{t_start} - {t_station}", "cost": 140.0, "vehicle": "Shared Auto"},
-                            {"title": f"Intercity Express Train: {dep_hub} ➔ {arr_hub}", "time": f"{t_station} - {t_arr}", "cost": leg_info["ticket_cost"], "vehicle": "Express Train"},
-                            {"title": f"Shared Auto from {arr_hub} to Stay", "time": f"{t_arr} - {t_hotel}", "cost": 160.0, "vehicle": "Shared Auto"}
+                            {"title": f"Local Shared Auto to {dep_hub}", "time": f"{feeder_start} - {dep_station}", "cost": 140.0, "vehicle": "Shared Auto"},
+                            {"title": f"Express Train ({train_label}): {dep_hub} ➔ {arr_hub}", "time": f"{train_dep} - {train_arr}", "cost": leg_info["ticket_cost"], "vehicle": train_label},
+                            {"title": f"Local Shared Auto from {arr_hub} to Stay", "time": f"{train_arr} - {t_hotel}", "cost": 160.0, "vehicle": "Shared Auto"}
                         ]
                     }
                 elif transit_mode == "bus":
@@ -477,20 +563,34 @@ class SchedulerAgent(BaseAgent):
             # 3. Final Day Return
             elif is_return_day:
                 ret_mode = return_travel_mode or route.selected_mode
-                leg_info = self._find_leg_for_pair(active_city, route.origin, route, party_size, ret_mode)
+                leg_info = self._find_leg_for_pair(active_city, route.origin, route, party_size, ret_mode, selected_train=return_train_number)
                 transit_mode = leg_info["mode"]
                 day_transit_km = leg_info["distance_km"]
                 day_transit_hours = leg_info["duration_hours"]
                 day_transit_cost = leg_info["cost"]
                 dep_hub = leg_info["departure_hub"] or f"{active_city} Station"
                 arr_hub = leg_info["arrival_hub"] or f"{route.origin} Station"
+                if transit_mode == "train":
+                    if not any(w in dep_hub for w in ["Station", "Junction", "Terminal"]):
+                        dep_hub = f"{dep_hub} Railway Station"
+                    if not any(w in arr_hub for w in ["Station", "Junction", "Terminal"]):
+                        arr_hub = f"{arr_hub} Railway Station"
                 local_veh = leg_info["local_vehicle_type"] or "Shared Auto"
 
                 if transit_mode == "train":
+                    t_num = leg_info.get("train_number") or ""
+                    t_name = leg_info.get("train_name") or "Return Express Train"
+                    train_label = f"🚆 {t_num} {t_name}".strip() if t_num else f"🚆 {t_name}"
+                    train_dep = leg_info.get("departure_time") or "15:15"
+                    train_arr = leg_info.get("arrival_time") or "19:45"
+                    dep_mins = self._time_str_to_mins(train_dep)
+                    feeder_start = self._mins_to_time_str(max(300, dep_mins - 45))
+                    dep_hub_reach = self._mins_to_time_str(max(330, dep_mins - 10))
+
                     return_steps = [
-                        {"title": f"Local Shared Auto / E-Rickshaw to {dep_hub}", "time": "14:30 - 15:05", "cost": 140.0, "vehicle": "Shared Auto"},
-                        {"title": f"Return Express Train: {dep_hub} ➔ {arr_hub}", "time": "15:15 Departure", "cost": leg_info.get("ticket_cost", 0.0), "vehicle": "Express Train"},
-                        {"title": f"Local Shared Auto from {arr_hub} to Home ({route.origin})", "time": "Final Drop", "cost": 160.0, "vehicle": "Shared Auto"}
+                        {"title": f"Local Shared Auto / E-Rickshaw to {dep_hub}", "time": f"{feeder_start} - {dep_hub_reach}", "cost": 140.0, "vehicle": "Shared Auto"},
+                        {"title": f"Return Express Train ({train_label}): {dep_hub} ➔ {arr_hub}", "time": f"{train_dep} - {train_arr}", "cost": leg_info.get("ticket_cost", 0.0), "vehicle": train_label},
+                        {"title": f"Local Shared Auto from {arr_hub} to Home ({route.origin})", "time": f"{train_arr} Arrival", "cost": 160.0, "vehicle": "Shared Auto"}
                     ]
                 elif transit_mode == "bus":
                     return_steps = [
@@ -510,7 +610,7 @@ class SchedulerAgent(BaseAgent):
 
                 transit_details = {
                     "mode": transit_mode,
-                    "mode_title": f"Return via {transit_mode.title()}",
+                    "mode_title": f"Return via {train_label if transit_mode == 'train' else transit_mode.title()}",
                     "from_place": active_city,
                     "to_place": route.origin,
                     "distance_km": day_transit_km,
@@ -521,6 +621,11 @@ class SchedulerAgent(BaseAgent):
                     "departure_hub": dep_hub,
                     "arrival_hub": arr_hub,
                     "local_vehicle_type": local_veh,
+                    "train_number": leg_info.get("train_number"),
+                    "train_name": leg_info.get("train_name"),
+                    "departure_time": leg_info.get("departure_time"),
+                    "arrival_time": leg_info.get("arrival_time"),
+                    "available_trains": leg_info.get("available_trains", []),
                     "steps": return_steps
                 }
 
@@ -546,8 +651,20 @@ class SchedulerAgent(BaseAgent):
                     ]
                 }
 
-            # Schedule sightseeing spots for this day in active_city
-            for idx, p in enumerate(day_places):
+            if transit_details and leg_info:
+                transit_details["fare_source"] = leg_info.get("fare_source", "calibrated_model")
+                transit_details["fare_currency"] = leg_info.get("fare_currency", "₹")
+                transit_details["fare_breakdown"] = leg_info.get("fare_breakdown", {})
+                transit_details["seat_status"] = leg_info.get("seat_status", [])
+                transit_details["coach_position"] = leg_info.get("coach_position", "")
+                transit_details["route_stops"] = leg_info.get("route_stops", [])
+                transit_details["live_status"] = leg_info.get("live_status", {})
+                transit_details["live_delay_mins"] = leg_info.get("live_delay_mins", 0)
+                transit_details["live_status_text"] = leg_info.get("live_status_text", "Scheduled")
+
+            # Schedule sightseeing spots for this day in active_city (user-selected first)
+            sorted_day_places = sorted(day_places, key=lambda p: not p.user_selected)
+            for idx, p in enumerate(sorted_day_places):
                 place_open_mins = self._time_str_to_mins(p.opening_time)
                 place_close_mins = self._time_str_to_mins(p.closing_time)
 
@@ -561,7 +678,8 @@ class SchedulerAgent(BaseAgent):
                 end_str = self._mins_to_time_str(end_mins)
 
                 is_open = end_mins <= place_close_mins
-                status_note = "Open & Validated" if is_open else f"Warning: Exceeds closing time {p.closing_time}"
+                base_note = "Open & Validated" if is_open else f"Warning: Exceeds closing time {p.closing_time}"
+                status_note = f"⭐ User Selected • {base_note}" if p.user_selected else base_note
                 if not is_open:
                     feasibility_notes.append(f"{p.name} closes at {p.closing_time}. Visit window trimmed to match.")
 
