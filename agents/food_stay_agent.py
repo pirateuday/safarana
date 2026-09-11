@@ -10,11 +10,11 @@ class FoodStayAgent(BaseAgent):
             description="Finds curated highway dhabas, local culinary spots, and accommodations within budget tier; executes bookings."
         )
 
-    def select_accommodations(self, location: str, stay_tier: str, party_size: int = 2) -> List[Hotel]:
+    def select_accommodations(self, location: str, stay_tier: str, party_size: int = 2, selected_hotel_id: Optional[str] = None) -> List[Hotel]:
         self.log_step(
             recipient="Planner",
             action="search_hotels",
-            payload={"location": location, "tier": stay_tier, "party_size": party_size},
+            payload={"location": location, "tier": stay_tier, "party_size": party_size, "selected_hotel_id": selected_hotel_id},
             notes=f"Searching hotels in {location} for {party_size} guests with preference '{stay_tier}'."
         )
 
@@ -28,28 +28,36 @@ class FoodStayAgent(BaseAgent):
                 price_per_night=h["price_per_night"],
                 rating=h.get("rating", 4.3),
                 amenities=h.get("amenities", []),
-                image_url=h.get("image_url")
+                image_url=h.get("image_url"),
+                source=h.get("source", "curated"),
+                address=h.get("address"),
+                user_selected=bool(selected_hotel_id and (h["id"] == selected_hotel_id or h["name"].strip().lower() == selected_hotel_id.strip().lower()))
             )
             for h in results
         ]
+
+        # Prioritize user-selected hotel if found
+        if selected_hotel_id:
+            hotels.sort(key=lambda h: 0 if h.user_selected else 1)
 
         self.log_step(
             recipient="Planner",
             action="hotels_retrieved",
             payload={"count": len(hotels), "options": [h.name for h in hotels]},
-            notes=f"Found {len(hotels)} accommodations. Top match: {hotels[0].name if hotels else 'N/A'}."
+            notes=f"Found {len(hotels)} accommodations. Top match: {hotels[0].name if hotels else 'N/A'}{' (User Selected)' if hotels and hotels[0].user_selected else ''}."
         )
         return hotels
 
-    def select_dining_options(self, location: str, food_pref: str, is_highway: bool = False) -> List[Restaurant]:
+    def select_dining_options(self, location: str, food_pref: str, is_highway: bool = False, selected_restaurant_ids: Optional[List[str]] = None) -> List[Restaurant]:
         search_loc = f"{location} Highway Corridor" if is_highway else location
         self.log_step(
             recipient="Planner",
             action="search_dining",
-            payload={"location": search_loc, "preference": food_pref, "is_highway": is_highway},
+            payload={"location": search_loc, "preference": food_pref, "is_highway": is_highway, "selected_restaurant_ids": selected_restaurant_ids},
             notes=f"Looking up {'highway dhabas' if is_highway else 'local restaurants'} for '{food_pref}'."
         )
 
+        selected_ids_set = set(selected_restaurant_ids or [])
         results = self.execute_tool("search_restaurants", location=search_loc, cuisine_pref=food_pref)
         restaurants = [
             Restaurant(
@@ -61,10 +69,18 @@ class FoodStayAgent(BaseAgent):
                 rating=r.get("rating", 4.4),
                 specialty=r.get("specialty", ""),
                 is_dhaba=r.get("is_dhaba", False),
-                image_url=r.get("image_url")
+                image_url=r.get("image_url"),
+                source=r.get("source", "curated"),
+                address=r.get("address"),
+                user_selected=bool(r["id"] in selected_ids_set or any((s or "").lower() == r["name"].strip().lower() for s in selected_ids_set))
             )
             for r in results
         ]
+
+        # Prioritize user-selected restaurants
+        if selected_restaurant_ids:
+            restaurants.sort(key=lambda r: 0 if r.user_selected else 1)
+
         return restaurants
 
     def book_item(self, item_type: str, item_id: str, date_or_time: str, guests: int, user_name: str = "Traveler", plan_id: str = "") -> BookingResponse:

@@ -2634,4 +2634,293 @@ body {
   font-style: italic;
 }
 
+/* ==========================================
+   Flight Pills & Selection UI
+   ========================================== */
+.flight-selector-section {
+  margin-top: 10px;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.flight-selector-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  color: #0f766e;
+}
+
+.badge-live-flight {
+  background: #0d9488;
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  letter-spacing: 0.02em;
+}
+
+.flight-pills-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
+
+.flight-pills-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.flight-pills-scroll::-webkit-scrollbar-thumb {
+  background: #5eead4;
+  border-radius: 9999px;
+}
+
+.flight-pill-btn {
+  flex: 0 0 auto;
+  min-width: 195px;
+  max-width: 240px;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.flight-pill-btn:hover {
+  border-color: #0d9488;
+  background: #fcfefe;
+  transform: translateY(-1px);
+}
+
+.flight-pill-btn.active {
+  background: #ffffff;
+  border-color: #0d9488;
+  box-shadow: 0 0 0 2.5px rgba(13, 148, 136, 0.25);
+}
+
+.flight-pill-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.flight-num {
+  font-family: monospace;
+  font-weight: 800;
+  font-size: 0.78rem;
+  color: #0f766e;
+  background: #ccfbf1;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.flight-times {
+  font-weight: 700;
+  font-size: 0.76rem;
+  color: #0f172a;
+}
+
+.flight-pill-airline {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #1e293b;
+  display: flex;
+  justify-content: space-between;
+}
+
+.flight-fare {
+  color: #0d9488;
+  font-weight: 700;
+}
+
+.flight-pill-meta {
+  font-size: 0.68rem;
+  color: #64748b;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.flight-seats-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.flight-seats-badge.low {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+/* ==========================================
+   Stay & Dining Interactive Pickers
+   ========================================== */
+.stay-picker-container,
+.dining-picker-container {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.stay-picker-container.open,
+.dining-picker-container.open {
+  border-color: #6366f1;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08);
+}
+
+.stay-picker-toggle,
+.dining-picker-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #1e293b;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.stay-picker-toggle:hover,
+.dining-picker-toggle:hover {
+  background: #f1f5f9;
+}
+
+.stay-selection-list,
+.dining-selection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 8px 10px;
+}
+
+.hospitality-item-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #ffffff;
+  gap: 8px;
+  transition: all 0.15s ease;
+}
+
+.hospitality-item-card:hover {
+  border-color: #6366f1;
+  background: #faf5ff;
+}
+
+.hospitality-item-card.selected {
+  border-color: #6366f1;
+  background: #f5f3ff;
+  box-shadow: 0 0 0 1.5px #6366f1;
+}
+
+.hosp-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.hosp-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.hosp-sub {
+  font-size: 0.72rem;
+  color: #64748b;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.hosp-source-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.source-staying {
+  background: #fdf4ff;
+  color: #a21caf;
+  border: 1px solid #f0abfc;
+}
+
+.source-google {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
+.source-osm {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.source-curated {
+  background: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.hosp-price {
+  font-weight: 700;
+  color: #059669;
+  font-size: 0.8rem;
+}
+
+.hosp-select-btn {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.hosp-select-btn:hover {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #ffffff;
+}
+
+.hospitality-item-card.selected .hosp-select-btn {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #ffffff;
+}
+
 

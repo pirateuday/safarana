@@ -7,6 +7,8 @@ DATABASE_PATH = str(BASE_DIR / "smartroute_cache.db")
 # Google Maps API Key (provided by user, with env override)
 GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "AIzaSyBD9Cks3UYTRbIOUafiGCCMRImc1VTBPOs")
 GOOGLE_PLACES_KEY = os.getenv("GOOGLE_PLACES_KEY", GOOGLE_MAPS_API_KEY)
+STAYING_API_KEY = os.getenv("STAYING_API_KEY", "")
+FLIGHT_API_KEY = os.getenv("FLIGHT_API_KEY", "")
 ORS_API_KEY = os.getenv("ORS_API_KEY", "")
 RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
 

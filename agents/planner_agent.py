@@ -50,6 +50,11 @@ class PlannerAgent(BaseAgent):
             leg_modes_list.append(mode)
 
         # STAGE 1: ROUTING AGENT
+        merged_selected_flights = dict(trip_input.selected_flights or {})
+        for i, stop in enumerate(trip_input.stopovers or []):
+            if stop.selected_flight and str(i) not in merged_selected_flights:
+                merged_selected_flights[str(i)] = stop.selected_flight
+
         route = self.route_agent.analyze_route(
             origin=trip_input.origin,
             destination=trip_input.destination,
@@ -58,6 +63,7 @@ class PlannerAgent(BaseAgent):
             leg_modes=leg_modes_list,
             party_size=trip_input.party_size,
             selected_trains=trip_input.selected_trains,
+            selected_flights=merged_selected_flights,
             api_key=trip_input.google_maps_api_key
         )
 
@@ -88,28 +94,56 @@ class PlannerAgent(BaseAgent):
         scenic_hotels_by_city: Dict[str, Hotel] = {}
         city_meals_by_city: Dict[str, List[Restaurant]] = {}
 
+        # Consolidated user-selected hotels and dining by city
+        merged_hotels_by_city: Dict[str, str] = dict(trip_input.selected_hotels_by_city or {})
+        if trip_input.selected_hotel_id:
+            merged_hotels_by_city.setdefault(trip_input.destination, trip_input.selected_hotel_id)
+        for stop in (trip_input.stopovers or []):
+            if stop.location and stop.selected_hotel_id:
+                merged_hotels_by_city.setdefault(stop.location, stop.selected_hotel_id)
+
+        merged_dining_by_city: Dict[str, List[str]] = {}
+        for c, r_list in (trip_input.selected_dining_by_city or {}).items():
+            merged_dining_by_city[c] = list(r_list)
+        if trip_input.selected_restaurant_ids:
+            merged_dining_by_city.setdefault(trip_input.destination, []).extend(trip_input.selected_restaurant_ids)
+        for stop in (trip_input.stopovers or []):
+            if stop.location and stop.selected_restaurant_ids:
+                merged_dining_by_city.setdefault(stop.location, []).extend(stop.selected_restaurant_ids)
+
         for city in stay_cities:
+            chosen_hotel_id = merged_hotels_by_city.get(city)
             city_hotels = self.food_stay_agent.select_accommodations(
                 location=city,
                 stay_tier=trip_input.stay_preference.value,
-                party_size=trip_input.party_size
+                party_size=trip_input.party_size,
+                selected_hotel_id=chosen_hotel_id
             )
-            hotels_by_city[city] = city_hotels[0] if city_hotels else Hotel(
+            top_hotel = city_hotels[0] if city_hotels else Hotel(
                 id=f"HTL-{city[:3].upper()}-DEF", name=f"{city} Comfort Hotel", location=city,
                 price_per_night=2500.0, tier=trip_input.stay_preference.value
             )
-            bdg = next((h for h in city_hotels if "budget" in h.tier or "hostel" in h.tier), None)
-            budget_hotels_by_city[city] = bdg or Hotel(
-                id=f"HTL-{city[:3].upper()}-BDG", name=f"{city} Heritage Backpacker Hostel",
-                location=city, price_per_night=850.0, tier="budget_hostel", rating=4.4
-            )
-            scen = next((h for h in city_hotels if "boutique" in h.tier or "resort" in h.tier), city_hotels[0] if city_hotels else None)
-            scenic_hotels_by_city[city] = scen or hotels_by_city[city]
+            hotels_by_city[city] = top_hotel
 
+            # If user explicitly selected this stay, lock across all 4 variants
+            if top_hotel.user_selected:
+                budget_hotels_by_city[city] = top_hotel
+                scenic_hotels_by_city[city] = top_hotel
+            else:
+                bdg = next((h for h in city_hotels if "budget" in h.tier or "hostel" in h.tier), None)
+                budget_hotels_by_city[city] = bdg or Hotel(
+                    id=f"HTL-{city[:3].upper()}-BDG", name=f"{city} Heritage Backpacker Hostel",
+                    location=city, price_per_night=850.0, tier="budget_hostel", rating=4.4
+                )
+                scen = next((h for h in city_hotels if "boutique" in h.tier or "resort" in h.tier), city_hotels[0] if city_hotels else None)
+                scenic_hotels_by_city[city] = scen or hotels_by_city[city]
+
+            chosen_res_ids = merged_dining_by_city.get(city, [])
             city_meals_by_city[city] = self.food_stay_agent.select_dining_options(
                 location=city,
                 food_pref=trip_input.food_preference.value,
-                is_highway=False
+                is_highway=False,
+                selected_restaurant_ids=chosen_res_ids
             )
 
         primary_hotel = hotels_by_city.get(trip_input.destination, list(hotels_by_city.values())[0])
@@ -278,7 +312,8 @@ class PlannerAgent(BaseAgent):
             hotels_by_city=hotels_by_city,
             dining_by_city=dining_by_city,
             return_travel_mode=trip_input.return_travel_mode,
-            return_train_number=trip_input.return_train_number
+            return_train_number=trip_input.return_train_number,
+            return_flight_number=trip_input.return_flight_number or (trip_input.selected_flights.get("return") if trip_input.selected_flights else None)
         )
 
         # Attach weather to days

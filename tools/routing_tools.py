@@ -17,6 +17,11 @@ from tools.railway_tools import (
     get_train_live_status,
     get_train_full_details
 )
+from tools.flight_tools import (
+    calculate_flight_transit,
+    get_flights_between,
+    get_flight_details
+)
 
 # Curated High-Reliability Geocodes for Instant Response & Offline Fallback
 KNOWN_CITIES: Dict[str, Tuple[float, float]] = {
@@ -251,6 +256,7 @@ def calculate_transit_options(
     dist_km: float,
     party_size: int = 1,
     selected_train_number: Optional[str] = None,
+    selected_flight_number: Optional[str] = None,
     google_data: Optional[Dict[str, Any]] = None,
     api_key: Optional[str] = None
 ) -> Dict[str, Dict[str, Any]]:
@@ -362,7 +368,7 @@ def calculate_transit_options(
     train_route_stops = primary_train.get("route_stops", []) if primary_train else []
     train_live = primary_train.get("live_status", {}) if primary_train else {}
 
-    return {
+    options = {
         "driving": {
             "mode": "driving",
             "title": "Self-Drive / Personal Car",
@@ -470,6 +476,13 @@ def calculate_transit_options(
         }
     }
 
+    # 5. Flight (Commercial domestic flight where airport connectivity exists)
+    flight_opt = calculate_flight_transit(origin, destination, effective_dist, party_size=party_size, selected_flight_number=selected_flight_number)
+    if flight_opt:
+        options["flight"] = flight_opt
+
+    return options
+
 @tool(name="get_route", description="Fetch driving or travel route distance, time, and corridor waypoints between origin and destination.")
 def get_route(
     origin: str,
@@ -477,9 +490,10 @@ def get_route(
     travel_mode: str = "driving",
     party_size: int = 1,
     selected_train_number: Optional[str] = None,
+    selected_flight_number: Optional[str] = None,
     api_key: Optional[str] = None
 ) -> Dict[str, Any]:
-    cache_key = f"{origin.lower()}_to_{destination.lower()}_{travel_mode}_p{party_size}_{selected_train_number or 'def'}"
+    cache_key = f"{origin.lower()}_to_{destination.lower()}_{travel_mode}_p{party_size}_{selected_train_number or 'def'}_{selected_flight_number or 'def'}"
     cached = cache_db.get("route", cache_key)
     if cached:
         if travel_mode == "train" and cached.get("departure_hub") and not any(w in cached["departure_hub"] for w in ["Station", "Junction", "Terminal"]):
@@ -539,6 +553,7 @@ def get_route(
         origin, destination, dist_km,
         party_size=party_size,
         selected_train_number=selected_train_number,
+        selected_flight_number=selected_flight_number,
         google_data=g_data,
         api_key=api_key
     )
@@ -575,6 +590,13 @@ def get_route(
         "departure_time": chosen_opt.get("departure_time"),
         "arrival_time": chosen_opt.get("arrival_time"),
         "available_trains": chosen_opt.get("available_trains", []),
+        "flight_number": chosen_opt.get("flight_number"),
+        "airline": chosen_opt.get("airline"),
+        "airline_code": chosen_opt.get("airline_code"),
+        "aircraft": chosen_opt.get("aircraft"),
+        "cabin_class": chosen_opt.get("cabin_class"),
+        "baggage_allowance": chosen_opt.get("baggage_policy"),
+        "available_flights": chosen_opt.get("available_flights", []),
         "available_modes": list(transit_options.values()),
         "corridor_stops": corridor_stops,
         "geometry": geometry_coords,
@@ -601,13 +623,18 @@ def get_multi_stop_route(
     leg_modes: Optional[List[str]] = None,
     party_size: int = 1,
     selected_trains: Optional[Dict[str, str]] = None,
+    selected_flights: Optional[Dict[str, str]] = None,
     api_key: Optional[str] = None
 ) -> Dict[str, Any]:
     stopovers = [s.strip() for s in (stopovers or []) if s and s.strip()]
     if not stopovers:
         direct_mode = leg_modes[0] if (leg_modes and len(leg_modes) > 0 and leg_modes[0]) else travel_mode
-        direct_train = selected_trains.get("0") if selected_trains else None
-        direct = get_route(origin, destination, travel_mode=direct_mode, party_size=party_size, selected_train_number=direct_train, api_key=api_key)
+        direct_train = (selected_trains.get("0") or selected_trains.get(f"{origin}->{destination}")) if selected_trains else None
+        direct_flight = (selected_flights.get("0") or selected_flights.get(f"{origin}->{destination}") or selected_flights.get(destination)) if selected_flights else None
+        direct = get_route(
+            origin, destination, travel_mode=direct_mode, party_size=party_size,
+            selected_train_number=direct_train, selected_flight_number=direct_flight, api_key=api_key
+        )
         direct["legs"] = [{
             "from_place": direct["origin"],
             "to_place": direct["destination"],
@@ -628,6 +655,13 @@ def get_multi_stop_route(
             "departure_time": direct.get("departure_time"),
             "arrival_time": direct.get("arrival_time"),
             "available_trains": direct.get("available_trains", []),
+            "flight_number": direct.get("flight_number"),
+            "airline": direct.get("airline"),
+            "airline_code": direct.get("airline_code"),
+            "aircraft": direct.get("aircraft"),
+            "cabin_class": direct.get("cabin_class"),
+            "baggage_allowance": direct.get("baggage_allowance"),
+            "available_flights": direct.get("available_flights", []),
             "fare_source": direct.get("fare_source", "calibrated_model"),
             "fare_currency": direct.get("fare_currency", "₹"),
             "fare_breakdown": direct.get("fare_breakdown", {}),
@@ -653,8 +687,9 @@ def get_multi_stop_route(
         p_from = points[i]
         p_to = points[i+1]
         leg_mode = leg_modes[i] if (leg_modes and i < len(leg_modes) and leg_modes[i]) else travel_mode
-        leg_train = selected_trains.get(str(i)) if selected_trains else None
-        leg_data = get_route(p_from, p_to, travel_mode=leg_mode, party_size=party_size, selected_train_number=leg_train, api_key=api_key)
+        leg_train = (selected_trains.get(str(i)) or selected_trains.get(f"{p_from}->{p_to}")) if selected_trains else None
+        leg_flight = (selected_flights.get(str(i)) or selected_flights.get(f"{p_from}->{p_to}") or selected_flights.get(p_to)) if selected_flights else None
+        leg_data = get_route(p_from, p_to, travel_mode=leg_mode, party_size=party_size, selected_train_number=leg_train, selected_flight_number=leg_flight, api_key=api_key)
         legs.append({
             "from_place": p_from.title(),
             "to_place": p_to.title(),
@@ -675,6 +710,13 @@ def get_multi_stop_route(
             "departure_time": leg_data.get("departure_time"),
             "arrival_time": leg_data.get("arrival_time"),
             "available_trains": leg_data.get("available_trains", []),
+            "flight_number": leg_data.get("flight_number"),
+            "airline": leg_data.get("airline"),
+            "airline_code": leg_data.get("airline_code"),
+            "aircraft": leg_data.get("aircraft"),
+            "cabin_class": leg_data.get("cabin_class"),
+            "baggage_allowance": leg_data.get("baggage_allowance"),
+            "available_flights": leg_data.get("available_flights", []),
             "fare_source": leg_data.get("fare_source", "calibrated_model"),
             "fare_currency": leg_data.get("fare_currency", "₹"),
             "fare_breakdown": leg_data.get("fare_breakdown", {}),

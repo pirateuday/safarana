@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -5,6 +6,8 @@ from fastapi import FastAPI, HTTPException, Body, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+logger = logging.getLogger("smartroute")
 
 from models.schemas import (
     TripInput, TripPlan, BookingRequest, BookingResponse
@@ -112,6 +115,64 @@ def get_spots(city: str, genre: Optional[str] = None):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch spots: {str(e)}")
+
+@app.get("/api/flights")
+def get_flights(origin: str, destination: str, date: Optional[str] = None):
+    """Retrieves commercial domestic flight schedules, fares, classes, and seat availability."""
+    from tools.flight_tools import get_flights_between
+    try:
+        flights = get_flights_between(origin, destination, travel_date=date)
+        return {
+            "origin": origin,
+            "destination": destination,
+            "date": date,
+            "count": len(flights),
+            "flights": flights
+        }
+    except Exception as e:
+        logger.error(f"Error fetching flights: {e}")
+        return {"origin": origin, "destination": destination, "date": date, "count": 0, "flights": []}
+
+@app.get("/api/flights/{flight_number}")
+def get_flight_info(flight_number: str, origin: Optional[str] = None, destination: Optional[str] = None):
+    """Retrieves flight information and seat/fare status for a specific flight."""
+    from tools.flight_tools import get_flight_details
+    details = get_flight_details(flight_number, origin, destination)
+    if not details:
+        raise HTTPException(status_code=404, detail="Flight not found")
+    return {"success": True, "flight": details}
+
+@app.get("/api/hotels")
+def get_hotels(city: str, tier: Optional[str] = None):
+    """Aggregates hotels from StayingAPI, Google Places, OpenStreetMap, and Curated catalog."""
+    from tools.hospitality_tools import get_city_hotels
+    try:
+        hotels = get_city_hotels(city_name=city, stay_tier=tier)
+        return {
+            "city": city,
+            "tier": tier,
+            "count": len(hotels),
+            "hotels": hotels
+        }
+    except Exception as e:
+        logger.error(f"Error fetching hotels for {city}: {e}")
+        return {"city": city, "tier": tier, "count": 0, "hotels": []}
+
+@app.get("/api/restaurants")
+def get_restaurants(city: str, cuisine: Optional[str] = None, is_highway: bool = False):
+    """Aggregates food places & dhabas from Google Places, OpenStreetMap, and Curated catalog."""
+    from tools.hospitality_tools import get_city_restaurants
+    try:
+        restaurants = get_city_restaurants(city_name=city, cuisine_pref=cuisine or "all", is_highway=is_highway)
+        return {
+            "city": city,
+            "cuisine": cuisine,
+            "count": len(restaurants),
+            "restaurants": restaurants
+        }
+    except Exception as e:
+        logger.error(f"Error fetching restaurants for {city}: {e}")
+        return {"city": city, "cuisine": cuisine, "count": 0, "restaurants": []}
 
 @app.post("/api/plan", response_model=TripPlan)
 def plan_trip(trip_input: TripInput):

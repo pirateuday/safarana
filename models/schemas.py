@@ -30,6 +30,13 @@ class TransportOption(BaseModel):
     departure_time: Optional[str] = None
     arrival_time: Optional[str] = None
     available_trains: List[Dict[str, Any]] = Field(default_factory=list)
+    flight_number: Optional[str] = None
+    airline: Optional[str] = None
+    airline_code: Optional[str] = None
+    aircraft: Optional[str] = None
+    cabin_class: Optional[str] = None
+    baggage_allowance: Optional[str] = None
+    available_flights: List[Dict[str, Any]] = Field(default_factory=list)
     fare_source: str = "calibrated_model"
     fare_currency: str = "₹"
     fare_breakdown: Dict[str, Any] = Field(default_factory=dict)
@@ -98,6 +105,9 @@ class Hotel(BaseModel):
     rating: float = 4.3
     amenities: List[str] = Field(default_factory=list)
     image_url: Optional[str] = None
+    source: str = "curated" # "staying_api" | "google_places" | "osm" | "curated"
+    address: Optional[str] = None
+    user_selected: bool = False
 
 class Restaurant(BaseModel):
     id: str
@@ -110,6 +120,9 @@ class Restaurant(BaseModel):
     specialty: str = ""
     is_dhaba: bool = False
     image_url: Optional[str] = None
+    source: str = "curated" # "google_places" | "osm" | "curated"
+    address: Optional[str] = None
+    user_selected: bool = False
 
 class Activity(BaseModel):
     activity_id: str
@@ -169,6 +182,9 @@ class StopoverInput(BaseModel):
     stay_days: Optional[int] = None # None or 0 = "Not Sure / AI Optimal"
     travel_mode: Optional[str] = None # Optional mode for this leg
     selected_places: List[str] = Field(default_factory=list)
+    selected_flight: Optional[str] = None
+    selected_hotel_id: Optional[str] = None
+    selected_restaurant_ids: List[str] = Field(default_factory=list)
 
 class RouteLeg(BaseModel):
     from_place: str
@@ -190,6 +206,13 @@ class RouteLeg(BaseModel):
     departure_time: Optional[str] = None
     arrival_time: Optional[str] = None
     available_trains: List[Dict[str, Any]] = Field(default_factory=list)
+    flight_number: Optional[str] = None
+    airline: Optional[str] = None
+    airline_code: Optional[str] = None
+    aircraft: Optional[str] = None
+    cabin_class: Optional[str] = None
+    baggage_allowance: Optional[str] = None
+    available_flights: List[Dict[str, Any]] = Field(default_factory=list)
     fare_source: str = "calibrated_model"
     fare_currency: str = "₹"
     fare_breakdown: Dict[str, Any] = Field(default_factory=dict)
@@ -227,6 +250,12 @@ class TripInput(BaseModel):
     return_travel_mode: Optional[str] = None
     selected_trains: Dict[str, str] = Field(default_factory=dict) # e.g. {"0": "12015"}
     return_train_number: Optional[str] = None
+    selected_flights: Dict[str, str] = Field(default_factory=dict) # e.g. {"0": "6E-2381", "return": "AI-492"}
+    return_flight_number: Optional[str] = None
+    selected_hotel_id: Optional[str] = None
+    selected_hotels_by_city: Dict[str, str] = Field(default_factory=dict) # e.g. {"Jaipur": "HTL-JPR-02"}
+    selected_restaurant_ids: List[str] = Field(default_factory=list)
+    selected_dining_by_city: Dict[str, List[str]] = Field(default_factory=dict) # e.g. {"Jaipur": ["RES-JPR-01"]}
     interests: List[str] = Field(default_factory=lambda: ["heritage", "food", "scenic"])
     food_preference: FoodPreference = FoodPreference.all
     stay_preference: StayPreference = StayPreference.standard_hotel

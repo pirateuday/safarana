@@ -54,6 +54,18 @@ class TripOrchestrator:
         return new_plan
 
     def book_item(self, req: BookingRequest) -> BookingResponse:
+        if req.item_type == "flight":
+            from tools.flight_tools import book_flight
+            res = book_flight(flight_number=req.item_id, date=req.date_or_time, passengers=req.guests, passenger_name=req.user_name, plan_id=req.plan_id)
+            return BookingResponse(
+                booking_id=res["booking_id"],
+                status=res["status"],
+                item_name=res["item_name"],
+                item_type=res["item_type"],
+                confirmation_code=res["confirmation_code"],
+                amount=res["amount"],
+                details=res.get("details", {})
+            )
         return self.planner.food_stay_agent.book_item(
             item_type=req.item_type,
             item_id=req.item_id,

@@ -89,7 +89,7 @@ class SchedulerAgent(BaseAgent):
 
         return day_cities, notes
 
-    def _find_leg_for_pair(self, from_c: str, to_c: str, route: RouteOption, party_size: int, default_mode: str, selected_train: Optional[str] = None) -> Dict[str, Any]:
+    def _find_leg_for_pair(self, from_c: str, to_c: str, route: RouteOption, party_size: int, default_mode: str, selected_train: Optional[str] = None, selected_flight: Optional[str] = None) -> Dict[str, Any]:
         """Finds matching route leg or dynamically computes transit options for city pair."""
         f_norm = from_c.strip().lower()
         t_norm = to_c.strip().lower()
@@ -110,6 +110,13 @@ class SchedulerAgent(BaseAgent):
                     "departure_time": leg.departure_time,
                     "arrival_time": leg.arrival_time,
                     "available_trains": leg.available_trains,
+                    "flight_number": getattr(leg, "flight_number", None),
+                    "airline": getattr(leg, "airline", None),
+                    "airline_code": getattr(leg, "airline_code", None),
+                    "aircraft": getattr(leg, "aircraft", None),
+                    "cabin_class": getattr(leg, "cabin_class", None),
+                    "baggage_allowance": getattr(leg, "baggage_allowance", None),
+                    "available_flights": getattr(leg, "available_flights", []),
                     "fare_source": getattr(leg, "fare_source", "calibrated_model"),
                     "fare_currency": getattr(leg, "fare_currency", "₹"),
                     "fare_breakdown": getattr(leg, "fare_breakdown", {}),
@@ -121,7 +128,7 @@ class SchedulerAgent(BaseAgent):
                     "live_status_text": getattr(leg, "live_status_text", "Scheduled")
                 }
         # Fallback if not directly in route.legs (e.g. return leg)
-        rt = get_route(from_c, to_c, travel_mode=default_mode, party_size=party_size, selected_train_number=selected_train)
+        rt = get_route(from_c, to_c, travel_mode=default_mode, party_size=party_size, selected_train_number=selected_train, selected_flight_number=selected_flight)
         return {
             "mode": default_mode,
             "distance_km": rt["total_distance_km"],
@@ -137,6 +144,13 @@ class SchedulerAgent(BaseAgent):
             "departure_time": rt.get("departure_time"),
             "arrival_time": rt.get("arrival_time"),
             "available_trains": rt.get("available_trains", []),
+            "flight_number": rt.get("flight_number"),
+            "airline": rt.get("airline"),
+            "airline_code": rt.get("airline_code"),
+            "aircraft": rt.get("aircraft"),
+            "cabin_class": rt.get("cabin_class"),
+            "baggage_allowance": rt.get("baggage_allowance"),
+            "available_flights": rt.get("available_flights", []),
             "fare_source": rt.get("fare_source", "calibrated_model"),
             "fare_currency": rt.get("fare_currency", "₹"),
             "fare_breakdown": rt.get("fare_breakdown", {}),
@@ -164,7 +178,8 @@ class SchedulerAgent(BaseAgent):
         hotels_by_city: Optional[Dict[str, Hotel]] = None,
         dining_by_city: Optional[Dict[str, List[Restaurant]]] = None,
         return_travel_mode: Optional[str] = None,
-        return_train_number: Optional[str] = None
+        return_train_number: Optional[str] = None,
+        return_flight_number: Optional[str] = None
     ) -> List[DayItinerary]:
         self.log_step(
             recipient="Planner",
@@ -315,6 +330,46 @@ class SchedulerAgent(BaseAgent):
                             {"title": f"Local Shared Auto / Metro to {dep_hub}", "time": f"{feeder_start} - {dep_station}", "cost": 140.0, "vehicle": "Shared Auto"},
                             {"title": f"Express Train ({train_label}): {dep_hub} ➔ {arr_hub}", "time": f"{train_dep} - {train_arr}", "cost": leg_info["ticket_cost"], "vehicle": train_label},
                             {"title": f"Local Shared Auto from {arr_hub} to Stay", "time": f"{train_arr} - {t_hotel}", "cost": 160.0, "vehicle": "Shared Auto"}
+                        ]
+                    }
+                elif transit_mode == "flight":
+                    f_num = leg_info.get("flight_number") or ""
+                    f_air = leg_info.get("airline") or "IndiGo"
+                    flight_label = f"✈️ {f_air} ({f_num})" if f_num else f"✈️ {f_air} Domestic Flight"
+                    flight_dep = leg_info.get("departure_time") or "09:30"
+                    flight_arr = leg_info.get("arrival_time") or "10:45"
+                    dep_mins = self._time_str_to_mins(flight_dep)
+                    arr_mins = self._time_str_to_mins(flight_arr)
+                    feeder_start = self._mins_to_time_str(max(300, dep_mins - 120))
+                    dep_airport = self._mins_to_time_str(max(340, dep_mins - 75))
+                    t_hotel = self._mins_to_time_str(arr_mins + 45)
+                    current_time_mins = arr_mins + 45
+
+                    transit_details = {
+                        "mode": "flight",
+                        "mode_title": flight_label,
+                        "from_place": route.origin,
+                        "to_place": active_city,
+                        "distance_km": day_transit_km,
+                        "duration_hours": day_transit_hours,
+                        "total_cost": day_transit_cost,
+                        "ticket_cost": leg_info.get("ticket_cost", 0.0),
+                        "local_transit_cost": leg_info.get("local_transit_cost", 0.0),
+                        "departure_hub": dep_hub,
+                        "arrival_hub": arr_hub,
+                        "local_vehicle_type": local_veh,
+                        "flight_number": leg_info.get("flight_number"),
+                        "airline": leg_info.get("airline"),
+                        "airline_code": leg_info.get("airline_code"),
+                        "aircraft": leg_info.get("aircraft"),
+                        "cabin_class": leg_info.get("cabin_class"),
+                        "baggage_allowance": leg_info.get("baggage_allowance"),
+                        "available_flights": leg_info.get("available_flights", []),
+                        "steps": [
+                            {"title": f"Pre-booked Airport Feeder Cab to {dep_hub}", "time": f"{feeder_start} - {dep_airport}", "cost": 450.0, "vehicle": "Airport Feeder Cab"},
+                            {"title": f"Terminal Check-in & Security Gate at {dep_hub}", "time": f"{dep_airport} - {flight_dep}", "cost": 0.0, "vehicle": "Airport Terminal"},
+                            {"title": f"Flight ({flight_label}): {dep_hub} ➔ {arr_hub}", "time": f"{flight_dep} - {flight_arr}", "cost": leg_info.get("ticket_cost", 0.0), "vehicle": flight_label},
+                            {"title": f"Baggage Claim & Feeder Cab from {arr_hub} to Stay", "time": f"{flight_arr} - {t_hotel}", "cost": 450.0, "vehicle": "Airport Feeder Cab"}
                         ]
                     }
                 elif transit_mode == "bus":
@@ -495,6 +550,46 @@ class SchedulerAgent(BaseAgent):
                             {"title": f"Local Shared Auto from {arr_hub} to Stay", "time": f"{train_arr} - {t_hotel}", "cost": 160.0, "vehicle": "Shared Auto"}
                         ]
                     }
+                elif transit_mode == "flight":
+                    f_num = leg_info.get("flight_number") or ""
+                    f_air = leg_info.get("airline") or "IndiGo"
+                    flight_label = f"✈️ {f_air} ({f_num})" if f_num else f"✈️ {f_air} Flight"
+                    flight_dep = leg_info.get("departure_time") or "10:15"
+                    flight_arr = leg_info.get("arrival_time") or "11:30"
+                    dep_mins = self._time_str_to_mins(flight_dep)
+                    arr_mins = self._time_str_to_mins(flight_arr)
+                    feeder_start = self._mins_to_time_str(max(300, dep_mins - 120))
+                    dep_airport = self._mins_to_time_str(max(340, dep_mins - 75))
+                    t_hotel = self._mins_to_time_str(arr_mins + 45)
+                    current_time_mins = arr_mins + 45
+
+                    transit_details = {
+                        "mode": "flight",
+                        "mode_title": flight_label,
+                        "from_place": prev_city,
+                        "to_place": active_city,
+                        "distance_km": day_transit_km,
+                        "duration_hours": day_transit_hours,
+                        "total_cost": day_transit_cost,
+                        "ticket_cost": leg_info.get("ticket_cost", 0.0),
+                        "local_transit_cost": leg_info.get("local_transit_cost", 0.0),
+                        "departure_hub": dep_hub,
+                        "arrival_hub": arr_hub,
+                        "local_vehicle_type": local_veh,
+                        "flight_number": leg_info.get("flight_number"),
+                        "airline": leg_info.get("airline"),
+                        "airline_code": leg_info.get("airline_code"),
+                        "aircraft": leg_info.get("aircraft"),
+                        "cabin_class": leg_info.get("cabin_class"),
+                        "baggage_allowance": leg_info.get("baggage_allowance"),
+                        "available_flights": leg_info.get("available_flights", []),
+                        "steps": [
+                            {"title": f"Airport Feeder Cab to {dep_hub}", "time": f"{feeder_start} - {dep_airport}", "cost": 450.0, "vehicle": "Airport Feeder Cab"},
+                            {"title": f"Terminal Security & Boarding at {dep_hub}", "time": f"{dep_airport} - {flight_dep}", "cost": 0.0, "vehicle": "Airport Terminal"},
+                            {"title": f"Flight ({flight_label}): {dep_hub} ➔ {arr_hub}", "time": f"{flight_dep} - {flight_arr}", "cost": leg_info.get("ticket_cost", 0.0), "vehicle": flight_label},
+                            {"title": f"Baggage Claim & Feeder Cab to {active_city} Stay", "time": f"{flight_arr} - {t_hotel}", "cost": 450.0, "vehicle": "Airport Feeder Cab"}
+                        ]
+                    }
                 elif transit_mode == "bus":
                     t_start = self._mins_to_time_str(current_time_mins)
                     current_time_mins += 25
@@ -563,7 +658,7 @@ class SchedulerAgent(BaseAgent):
             # 3. Final Day Return
             elif is_return_day:
                 ret_mode = return_travel_mode or route.selected_mode
-                leg_info = self._find_leg_for_pair(active_city, route.origin, route, party_size, ret_mode, selected_train=return_train_number)
+                leg_info = self._find_leg_for_pair(active_city, route.origin, route, party_size, ret_mode, selected_train=return_train_number, selected_flight=return_flight_number)
                 transit_mode = leg_info["mode"]
                 day_transit_km = leg_info["distance_km"]
                 day_transit_hours = leg_info["duration_hours"]
@@ -577,7 +672,23 @@ class SchedulerAgent(BaseAgent):
                         arr_hub = f"{arr_hub} Railway Station"
                 local_veh = leg_info["local_vehicle_type"] or "Shared Auto"
 
-                if transit_mode == "train":
+                if transit_mode == "flight":
+                    f_num = leg_info.get("flight_number") or ""
+                    f_air = leg_info.get("airline") or "IndiGo"
+                    flight_label = f"✈️ {f_air} ({f_num})" if f_num else f"✈️ {f_air} Return Flight"
+                    flight_dep = leg_info.get("departure_time") or "17:30"
+                    flight_arr = leg_info.get("arrival_time") or "18:50"
+                    dep_mins = self._time_str_to_mins(flight_dep)
+                    feeder_start = self._mins_to_time_str(max(300, dep_mins - 120))
+                    dep_hub_reach = self._mins_to_time_str(max(340, dep_mins - 75))
+
+                    return_steps = [
+                        {"title": f"Pre-booked Feeder Cab to {dep_hub}", "time": f"{feeder_start} - {dep_hub_reach}", "cost": 450.0, "vehicle": "Airport Cab"},
+                        {"title": f"Terminal Security & Departure at {dep_hub}", "time": f"{dep_hub_reach} - {flight_dep}", "cost": 0.0, "vehicle": "Airport Terminal"},
+                        {"title": f"Return Flight ({flight_label}): {dep_hub} ➔ {arr_hub}", "time": f"{flight_dep} - {flight_arr}", "cost": leg_info.get("ticket_cost", 0.0), "vehicle": flight_label},
+                        {"title": f"Baggage Claim & Feeder to Home in {route.origin}", "time": f"{flight_arr} Arrival", "cost": 450.0, "vehicle": "Airport Feeder Cab"}
+                    ]
+                elif transit_mode == "train":
                     t_num = leg_info.get("train_number") or ""
                     t_name = leg_info.get("train_name") or "Return Express Train"
                     train_label = f"🚆 {t_num} {t_name}".strip() if t_num else f"🚆 {t_name}"
@@ -608,9 +719,14 @@ class SchedulerAgent(BaseAgent):
                         {"title": f"Return Drive from {active_city} to {route.origin} via Highway", "time": "14:30 Departure", "cost": day_transit_cost, "vehicle": "Self-Drive Car"}
                     ]
 
+                return_mode_title = (
+                    flight_label if transit_mode == "flight"
+                    else f"Return via {train_label}" if transit_mode == "train"
+                    else f"Return via {transit_mode.title()}"
+                )
                 transit_details = {
                     "mode": transit_mode,
-                    "mode_title": f"Return via {train_label if transit_mode == 'train' else transit_mode.title()}",
+                    "mode_title": return_mode_title,
                     "from_place": active_city,
                     "to_place": route.origin,
                     "distance_km": day_transit_km,
@@ -626,6 +742,13 @@ class SchedulerAgent(BaseAgent):
                     "departure_time": leg_info.get("departure_time"),
                     "arrival_time": leg_info.get("arrival_time"),
                     "available_trains": leg_info.get("available_trains", []),
+                    "flight_number": leg_info.get("flight_number"),
+                    "airline": leg_info.get("airline"),
+                    "airline_code": leg_info.get("airline_code"),
+                    "aircraft": leg_info.get("aircraft"),
+                    "cabin_class": leg_info.get("cabin_class"),
+                    "baggage_allowance": leg_info.get("baggage_allowance"),
+                    "available_flights": leg_info.get("available_flights", []),
                     "steps": return_steps
                 }
 
@@ -652,6 +775,13 @@ class SchedulerAgent(BaseAgent):
                 }
 
             if transit_details and leg_info:
+                transit_details["flight_number"] = leg_info.get("flight_number")
+                transit_details["airline"] = leg_info.get("airline")
+                transit_details["airline_code"] = leg_info.get("airline_code")
+                transit_details["aircraft"] = leg_info.get("aircraft")
+                transit_details["cabin_class"] = leg_info.get("cabin_class")
+                transit_details["baggage_allowance"] = leg_info.get("baggage_allowance")
+                transit_details["available_flights"] = leg_info.get("available_flights", [])
                 transit_details["fare_source"] = leg_info.get("fare_source", "calibrated_model")
                 transit_details["fare_currency"] = leg_info.get("fare_currency", "₹")
                 transit_details["fare_breakdown"] = leg_info.get("fare_breakdown", {})
@@ -730,15 +860,22 @@ class SchedulerAgent(BaseAgent):
             buffer_cost = round((day_transit_cost + activities_cost + food_cost + stay_cost) * 0.05, 2)
             total_day = round(day_transit_cost + activities_cost + food_cost + stay_cost + buffer_cost, 2)
 
+            # Highlight user-selected stay and dining in feasibility notes
+            if overnight and overnight.hotel and getattr(overnight.hotel, "user_selected", False):
+                feasibility_notes.append(f"⭐ Your Selected Stay: {overnight.hotel.name} confirmed for Night {day_num}.")
+            for m in meals:
+                if m.restaurant and getattr(m.restaurant, "user_selected", False):
+                    feasibility_notes.append(f"⭐ Your Selected Dining: {m.restaurant.name} scheduled for {m.meal_type.title()}.")
+
             # Informative Day Title reflecting transport mode
             if is_start_day:
-                mode_icon = "🚆" if transit_mode == "train" else "🚌" if transit_mode == "bus" else "🛺" if transit_mode == "shared_cab" else "🚗"
+                mode_icon = "✈️" if transit_mode == "flight" else "🚆" if transit_mode == "train" else "🚌" if transit_mode == "bus" else "🛺" if transit_mode == "shared_cab" else "🚗"
                 title = f"Day 1: Depart {route.origin} via {transit_mode.title()} {mode_icon} ➔ Arrive & Explore {active_city}"
             elif is_transition_day:
-                mode_icon = "🚆" if transit_mode == "train" else "🚌" if transit_mode == "bus" else "🛺" if transit_mode == "shared_cab" else "🚗"
+                mode_icon = "✈️" if transit_mode == "flight" else "🚆" if transit_mode == "train" else "🚌" if transit_mode == "bus" else "🛺" if transit_mode == "shared_cab" else "🚗"
                 title = f"Day {day_num}: {transit_mode.title()} Transit {mode_icon} from {prev_city} ➔ Explore {active_city}"
             elif is_return_day:
-                mode_icon = "🚆" if transit_mode == "train" else "🚌" if transit_mode == "bus" else "🛺" if transit_mode == "shared_cab" else "🚗"
+                mode_icon = "✈️" if transit_mode == "flight" else "🚆" if transit_mode == "train" else "🚌" if transit_mode == "bus" else "🛺" if transit_mode == "shared_cab" else "🚗"
                 title = f"Day {day_num}: Final Sights in {active_city} & Return Journey via {transit_mode.title()} {mode_icon} to {route.origin}"
             else:
                 title = f"Day {day_num}: In-Depth Sights & Experiences in {active_city}"

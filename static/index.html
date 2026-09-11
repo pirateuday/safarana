@@ -172,6 +172,58 @@
                         <div class="spots-loading-hint">Loading places...</div>
                       </div>
                     </div>
+                  <!-- Interactive Hotel Selection Panel for Destination -->
+                  <div class="stay-picker-container" id="destStayPicker" style="margin-top: 8px;">
+                    <button type="button" class="stay-picker-toggle" id="destStayPickerToggle">
+                      <span class="spot-picker-toggle-left">
+                        <span class="spot-picker-icon">🏨</span>
+                        <span>Choose Stay in <strong id="destStayPickerCityName">Jaipur</strong></span>
+                        <span class="spot-picker-count-badge" id="destStaySelectedBadge">Auto-picked</span>
+                      </span>
+                      <svg class="spot-picker-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="stay-picker-body" id="destStayPickerBody" style="display: none;">
+                      <div class="spot-picker-sub">
+                        <span>Extracted from <strong>StayingAPI, Google Places & OSM</strong></span>
+                        <button type="button" class="btn-refresh-spots" id="destRefreshStayBtn" title="Refresh hotels">🔄 Refresh</button>
+                      </div>
+                      <div class="genre-filter-bar" id="destStayFilters">
+                        <button type="button" class="genre-filter-chip active" data-stay-tier="all">All Tiers</button>
+                        <button type="button" class="genre-filter-chip" data-stay-tier="standard_hotel">Standard 3-Star</button>
+                        <button type="button" class="genre-filter-chip" data-stay-tier="budget_hostel">Budget / Hostel</button>
+                        <button type="button" class="genre-filter-chip" data-stay-tier="boutique_resort">Boutique Resort</button>
+                      </div>
+                      <div class="stay-selection-list" id="destStaysList">
+                        <div class="spots-loading-hint">Loading accommodations...</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Interactive Dining Selection Panel for Destination -->
+                  <div class="dining-picker-container" id="destDiningPicker" style="margin-top: 8px;">
+                    <button type="button" class="dining-picker-toggle" id="destDiningPickerToggle">
+                      <span class="spot-picker-toggle-left">
+                        <span class="spot-picker-icon">🍲</span>
+                        <span>Choose Food & Dhabas in <strong id="destDiningPickerCityName">Jaipur</strong></span>
+                        <span class="spot-picker-count-badge" id="destDiningSelectedBadge">0 Selected</span>
+                      </span>
+                      <svg class="spot-picker-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="dining-picker-body" id="destDiningPickerBody" style="display: none;">
+                      <div class="spot-picker-sub">
+                        <span>Extracted from <strong>Google Places, OSM & Highway Dhabas</strong></span>
+                        <button type="button" class="btn-refresh-spots" id="destRefreshDiningBtn" title="Refresh food spots">🔄 Refresh</button>
+                      </div>
+                      <div class="genre-filter-bar" id="destDiningFilters">
+                        <button type="button" class="genre-filter-chip active" data-cuisine="all">All Food</button>
+                        <button type="button" class="genre-filter-chip" data-cuisine="roadside_dhaba">Highway Dhaba</button>
+                        <button type="button" class="genre-filter-chip" data-cuisine="local_cuisine">Local Specialty</button>
+                        <button type="button" class="genre-filter-chip" data-cuisine="vegetarian">Pure Veg</button>
+                      </div>
+                      <div class="dining-selection-list" id="destDiningList">
+                        <div class="spots-loading-hint">Loading food places...</div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -234,6 +286,7 @@
               <select id="travelModeInput">
                 <option value="driving" selected>🚗 Road Trip / Self-Drive Car</option>
                 <option value="train">🚆 Intercity Express Train</option>
+                <option value="flight">✈️ Commercial Domestic Flight</option>
                 <option value="bus">🚌 Highway Express Bus</option>
                 <option value="shared_cab">🛺 Shared Outstation Cab</option>
               </select>

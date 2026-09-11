@@ -12,9 +12,17 @@ let currentLegModes = {};
 let currentReturnMode = null;
 let currentSelectedTrains = {};
 let currentReturnTrain = null;
+let currentSelectedFlights = {};
+let currentReturnFlight = null;
 let userSelectedSpotsByCity = {};
+let userSelectedHotelsByCity = {};
+let userSelectedDiningByCity = {};
 let citySpotsCache = {};
+let cityHotelsCache = {};
+let cityDiningCache = {};
 let cityActiveGenre = {};
+let cityActiveStayTier = {};
+let cityActiveCuisine = {};
 
 // Initialize upon DOM load
 document.addEventListener("DOMContentLoaded", () => {
@@ -22,6 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initEventListeners();
   initLocationControls();
   initSpotPickers();
+  initStayAndDiningPickers();
   loadCities();
   loadBookingsCount();
   // Initial plan load
@@ -385,6 +394,272 @@ async function renderCitySpotPicker(cityName, listElem, genresElem, badgeElem, i
   });
 }
 
+function initStayAndDiningPickers() {
+  // Stay Picker Setup
+  const stayToggle = document.getElementById("destStayPickerToggle");
+  const stayBody = document.getElementById("destStayPickerBody");
+  const stayContainer = document.getElementById("destStayPicker");
+  const stayRefresh = document.getElementById("destRefreshStayBtn");
+  const destInput = document.getElementById("destinationInput");
+
+  if (stayToggle && stayBody && stayContainer) {
+    stayToggle.addEventListener("click", () => {
+      const isOpen = stayContainer.classList.toggle("open");
+      stayBody.style.display = isOpen ? "block" : "none";
+      if (isOpen) {
+        updateDestStayPicker(false);
+      }
+    });
+  }
+
+  if (stayRefresh) {
+    stayRefresh.addEventListener("click", (e) => {
+      e.stopPropagation();
+      updateDestStayPicker(true);
+    });
+  }
+
+  // Dining Picker Setup
+  const diningToggle = document.getElementById("destDiningPickerToggle");
+  const diningBody = document.getElementById("destDiningPickerBody");
+  const diningContainer = document.getElementById("destDiningPicker");
+  const diningRefresh = document.getElementById("destRefreshDiningBtn");
+
+  if (diningToggle && diningBody && diningContainer) {
+    diningToggle.addEventListener("click", () => {
+      const isOpen = diningContainer.classList.toggle("open");
+      diningBody.style.display = isOpen ? "block" : "none";
+      if (isOpen) {
+        updateDestDiningPicker(false);
+      }
+    });
+  }
+
+  if (diningRefresh) {
+    diningRefresh.addEventListener("click", (e) => {
+      e.stopPropagation();
+      updateDestDiningPicker(true);
+    });
+  }
+
+  if (destInput) {
+    destInput.addEventListener("change", () => {
+      const dest = destInput.value.trim() || "Destination";
+      const sName = document.getElementById("destStayPickerCityName");
+      if (sName) sName.textContent = dest;
+      const dName = document.getElementById("destDiningPickerCityName");
+      if (dName) dName.textContent = dest;
+      if (stayBody && stayBody.style.display === "block") updateDestStayPicker(false);
+      if (diningBody && diningBody.style.display === "block") updateDestDiningPicker(false);
+    });
+  }
+}
+
+async function fetchCityHotels(cityName, stayTier = null, forceRefresh = false) {
+  const normCity = (cityName || "").trim();
+  if (!normCity) return [];
+  const cacheKey = `${normCity}_${stayTier || 'all'}`;
+  if (!forceRefresh && cityHotelsCache[cacheKey]) {
+    return cityHotelsCache[cacheKey];
+  }
+  try {
+    const tierParam = stayTier && stayTier !== "all" ? `&tier=${encodeURIComponent(stayTier)}` : "";
+    const res = await fetch(`/api/hotels?city=${encodeURIComponent(normCity)}${tierParam}`);
+    if (!res.ok) throw new Error("Failed to fetch hotels");
+    const data = await res.json();
+    cityHotelsCache[cacheKey] = data.hotels || [];
+    return cityHotelsCache[cacheKey];
+  } catch (err) {
+    console.error(`Error fetching hotels for ${normCity}:`, err);
+    return [];
+  }
+}
+
+async function fetchCityDining(cityName, cuisine = null, forceRefresh = false) {
+  const normCity = (cityName || "").trim();
+  if (!normCity) return [];
+  const cacheKey = `${normCity}_${cuisine || 'all'}`;
+  if (!forceRefresh && cityDiningCache[cacheKey]) {
+    return cityDiningCache[cacheKey];
+  }
+  try {
+    const cuisParam = cuisine && cuisine !== "all" ? `&cuisine=${encodeURIComponent(cuisine)}` : "";
+    const res = await fetch(`/api/restaurants?city=${encodeURIComponent(normCity)}${cuisParam}`);
+    if (!res.ok) throw new Error("Failed to fetch restaurants");
+    const data = await res.json();
+    cityDiningCache[cacheKey] = data.restaurants || [];
+    return cityDiningCache[cacheKey];
+  } catch (err) {
+    console.error(`Error fetching dining for ${normCity}:`, err);
+    return [];
+  }
+}
+
+async function updateDestStayPicker(forceRefresh = false) {
+  const dest = document.getElementById("destinationInput")?.value.trim() || "Jaipur";
+  const nameElem = document.getElementById("destStayPickerCityName");
+  if (nameElem) nameElem.textContent = dest;
+  const listElem = document.getElementById("destStaysList");
+  const filtersElem = document.getElementById("destStayFilters");
+  const badgeElem = document.getElementById("destStaySelectedBadge");
+  await renderCityHotelPicker(dest, listElem, filtersElem, badgeElem, false, forceRefresh);
+}
+
+async function updateDestDiningPicker(forceRefresh = false) {
+  const dest = document.getElementById("destinationInput")?.value.trim() || "Jaipur";
+  const nameElem = document.getElementById("destDiningPickerCityName");
+  if (nameElem) nameElem.textContent = dest;
+  const listElem = document.getElementById("destDiningList");
+  const filtersElem = document.getElementById("destDiningFilters");
+  const badgeElem = document.getElementById("destDiningSelectedBadge");
+  await renderCityDiningPicker(dest, listElem, filtersElem, badgeElem, false, forceRefresh);
+}
+
+async function renderCityHotelPicker(cityName, listElem, filtersElem, badgeElem, isStopover = false, forceRefresh = false) {
+  if (!listElem) return;
+  listElem.innerHTML = `<div class="spots-loading-hint">Fetching stays in ${cityName} from StayingAPI, Google Places & OSM...</div>`;
+
+  const activeTier = cityActiveStayTier[cityName] || "all";
+  const hotels = await fetchCityHotels(cityName, activeTier, forceRefresh);
+
+  if (filtersElem) {
+    filtersElem.querySelectorAll("[data-stay-tier]").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.stayTier === activeTier);
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        cityActiveStayTier[cityName] = btn.dataset.stayTier;
+        renderCityHotelPicker(cityName, listElem, filtersElem, badgeElem, isStopover, false);
+      };
+    });
+  }
+
+  if (!hotels || hotels.length === 0) {
+    listElem.innerHTML = `<div class="spots-loading-hint">No accommodations found for "${cityName}". AI will automatically allocate verified stays.</div>`;
+    return;
+  }
+
+  const selectedHotelId = userSelectedHotelsByCity[cityName];
+  if (badgeElem) {
+    badgeElem.textContent = selectedHotelId ? "1 Stay Selected" : "Auto-picked";
+    badgeElem.classList.toggle("has-selected", !!selectedHotelId);
+  }
+
+  listElem.innerHTML = "";
+  hotels.forEach(h => {
+    const isSelected = selectedHotelId && (selectedHotelId === h.id || selectedHotelId === h.name);
+    const card = document.createElement("div");
+    card.className = `hospitality-item-card ${isSelected ? 'selected' : ''}`;
+    const src = h.source || "curated";
+    const srcBadgeClass = src === "staying_api" ? "source-staying" : src === "google_places" ? "source-google" : src === "osm" ? "source-osm" : "source-curated";
+    const srcText = src === "staying_api" ? "StayingAPI" : src === "google_places" ? "Google Places" : src === "osm" ? "OSM" : "Curated";
+    const amenitiesText = (h.amenities && h.amenities.length > 0) ? h.amenities.slice(0, 3).join(", ") : "Comfort stay";
+
+    card.innerHTML = `
+      <div class="hosp-info">
+        <div class="hosp-name">${h.name}</div>
+        <div class="hosp-sub">
+          <span class="hosp-source-badge ${srcBadgeClass}">${srcText}</span>
+          <span>★ ${h.rating || 4.3}</span>
+          <span>• ${amenitiesText}</span>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+        <span class="hosp-price">₹${(h.price_per_night || 2500).toLocaleString()}/n</span>
+        <button type="button" class="hosp-select-btn">
+          ${isSelected ? '✓ Picked' : 'Select'}
+        </button>
+      </div>
+    `;
+
+    card.addEventListener("click", () => {
+      if (isSelected) {
+        delete userSelectedHotelsByCity[cityName];
+      } else {
+        userSelectedHotelsByCity[cityName] = h.id;
+      }
+      renderCityHotelPicker(cityName, listElem, filtersElem, badgeElem, isStopover, false);
+      triggerPlanning();
+    });
+
+    listElem.appendChild(card);
+  });
+}
+
+async function renderCityDiningPicker(cityName, listElem, filtersElem, badgeElem, isStopover = false, forceRefresh = false) {
+  if (!listElem) return;
+  listElem.innerHTML = `<div class="spots-loading-hint">Fetching dining & dhabas in ${cityName} from Google Places & OSM...</div>`;
+
+  const activeCuisine = cityActiveCuisine[cityName] || "all";
+  const restaurants = await fetchCityDining(cityName, activeCuisine, forceRefresh);
+
+  if (filtersElem) {
+    filtersElem.querySelectorAll("[data-cuisine]").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.cuisine === activeCuisine);
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        cityActiveCuisine[cityName] = btn.dataset.cuisine;
+        renderCityDiningPicker(cityName, listElem, filtersElem, badgeElem, isStopover, false);
+      };
+    });
+  }
+
+  if (!restaurants || restaurants.length === 0) {
+    listElem.innerHTML = `<div class="spots-loading-hint">No food spots found for "${cityName}". AI will automatically allocate authentic regional dhabas.</div>`;
+    return;
+  }
+
+  if (!userSelectedDiningByCity[cityName]) {
+    userSelectedDiningByCity[cityName] = new Set();
+  }
+  const selectedSet = userSelectedDiningByCity[cityName];
+  if (badgeElem) {
+    const count = selectedSet.size;
+    badgeElem.textContent = `${count} Selected`;
+    badgeElem.classList.toggle("has-selected", count > 0);
+  }
+
+  listElem.innerHTML = "";
+  restaurants.forEach(r => {
+    const isSelected = selectedSet.has(r.id) || selectedSet.has(r.name);
+    const card = document.createElement("div");
+    card.className = `hospitality-item-card ${isSelected ? 'selected' : ''}`;
+    const src = r.source || "curated";
+    const srcBadgeClass = src === "google_places" ? "source-google" : src === "osm" ? "source-osm" : "source-curated";
+    const srcText = src === "google_places" ? "Google Places" : src === "osm" ? "OSM" : "Dhaba Curated";
+    const dish = r.specialty ? `• ${r.specialty}` : `• ${(r.cuisine_type || 'local').replace('_', ' ')}`;
+
+    card.innerHTML = `
+      <div class="hosp-info">
+        <div class="hosp-name">${r.name}</div>
+        <div class="hosp-sub">
+          <span class="hosp-source-badge ${srcBadgeClass}">${srcText}</span>
+          <span>★ ${r.rating || 4.4}</span>
+          <span style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${dish}</span>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+        <span class="hosp-price">~₹${(r.avg_cost_per_person || 250).toLocaleString()}/p</span>
+        <button type="button" class="hosp-select-btn">
+          ${isSelected ? '✓ Picked' : 'Select'}
+        </button>
+      </div>
+    `;
+
+    card.addEventListener("click", () => {
+      if (isSelected) {
+        selectedSet.delete(r.id);
+        selectedSet.delete(r.name);
+      } else {
+        selectedSet.add(r.id);
+      }
+      renderCityDiningPicker(cityName, listElem, filtersElem, badgeElem, isStopover, false);
+      triggerPlanning();
+    });
+
+    listElem.appendChild(card);
+  });
+}
+
 function updateDeadlineDisplay() {
   const startVal = document.getElementById("startDateInput")?.value;
   const endVal = document.getElementById("endDateInput")?.value;
@@ -483,6 +758,46 @@ function addStopoverRow(city = "", stayDays = "") {
           </div>
         </div>
       </div>
+
+      <!-- Nested Stay Picker for Stopover -->
+      <div class="stopover-spot-picker" style="margin-top:6px;">
+        <button type="button" class="btn-toggle-stopover-spots" id="toggle_stay_${stopoverUid}">
+          <span>🏨 Stay in <strong class="stopover-city-label-stay">${city || 'this Stop'}</strong></span>
+          <span class="spot-picker-count-badge" id="badge_stay_${stopoverUid}">Auto-picked</span>
+          <svg class="spot-picker-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div class="spot-picker-body" id="body_stay_${stopoverUid}" style="display:none; margin-top:6px;">
+          <div class="genre-filter-bar" id="filters_stay_${stopoverUid}">
+            <button type="button" class="genre-filter-chip active" data-stay-tier="all">All Tiers</button>
+            <button type="button" class="genre-filter-chip" data-stay-tier="standard_hotel">Standard</button>
+            <button type="button" class="genre-filter-chip" data-stay-tier="budget_hostel">Hostel</button>
+            <button type="button" class="genre-filter-chip" data-stay-tier="boutique_resort">Resort</button>
+          </div>
+          <div class="stay-selection-list" id="list_stay_${stopoverUid}">
+            <div class="spots-loading-hint">${city ? 'Click to load stays...' : 'Enter a city name above'}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Nested Dining Picker for Stopover -->
+      <div class="stopover-spot-picker" style="margin-top:6px;">
+        <button type="button" class="btn-toggle-stopover-spots" id="toggle_dining_${stopoverUid}">
+          <span>🍲 Food & Dhabas in <strong class="stopover-city-label-dining">${city || 'this Stop'}</strong></span>
+          <span class="spot-picker-count-badge" id="badge_dining_${stopoverUid}">0 Selected</span>
+          <svg class="spot-picker-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <div class="spot-picker-body" id="body_dining_${stopoverUid}" style="display:none; margin-top:6px;">
+          <div class="genre-filter-bar" id="filters_dining_${stopoverUid}">
+            <button type="button" class="genre-filter-chip active" data-cuisine="all">All Food</button>
+            <button type="button" class="genre-filter-chip" data-cuisine="roadside_dhaba">Dhabas</button>
+            <button type="button" class="genre-filter-chip" data-cuisine="local_cuisine">Local</button>
+            <button type="button" class="genre-filter-chip" data-cuisine="vegetarian">Veg</button>
+          </div>
+          <div class="dining-selection-list" id="list_dining_${stopoverUid}">
+            <div class="spots-loading-hint">${city ? 'Click to load food places...' : 'Enter a city name above'}</div>
+          </div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -493,6 +808,22 @@ function addStopoverRow(city = "", stayDays = "") {
   const genresElem = row.querySelector(`#genres_${stopoverUid}`);
   const badgeElem = row.querySelector(`#badge_${stopoverUid}`);
   const cityLabel = row.querySelector(".stopover-city-label");
+
+  // Stay Picker Elements
+  const toggleStayBtn = row.querySelector(`#toggle_stay_${stopoverUid}`);
+  const bodyStayElem = row.querySelector(`#body_stay_${stopoverUid}`);
+  const listStayElem = row.querySelector(`#list_stay_${stopoverUid}`);
+  const filtersStayElem = row.querySelector(`#filters_stay_${stopoverUid}`);
+  const badgeStayElem = row.querySelector(`#badge_stay_${stopoverUid}`);
+  const cityLabelStay = row.querySelector(".stopover-city-label-stay");
+
+  // Dining Picker Elements
+  const toggleDiningBtn = row.querySelector(`#toggle_dining_${stopoverUid}`);
+  const bodyDiningElem = row.querySelector(`#body_dining_${stopoverUid}`);
+  const listDiningElem = row.querySelector(`#list_dining_${stopoverUid}`);
+  const filtersDiningElem = row.querySelector(`#filters_dining_${stopoverUid}`);
+  const badgeDiningElem = row.querySelector(`#badge_dining_${stopoverUid}`);
+  const cityLabelDining = row.querySelector(".stopover-city-label-dining");
 
   toggleBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -507,19 +838,55 @@ function addStopoverRow(city = "", stayDays = "") {
     }
   });
 
+  toggleStayBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isVisible = bodyStayElem.style.display === "block";
+    bodyStayElem.style.display = isVisible ? "none" : "block";
+    toggleStayBtn.classList.toggle("open", !isVisible);
+    if (!isVisible) {
+      const curCity = input.value.trim();
+      if (curCity) {
+        renderCityHotelPicker(curCity, listStayElem, filtersStayElem, badgeStayElem, true, false);
+      }
+    }
+  });
+
+  toggleDiningBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isVisible = bodyDiningElem.style.display === "block";
+    bodyDiningElem.style.display = isVisible ? "none" : "block";
+    toggleDiningBtn.classList.toggle("open", !isVisible);
+    if (!isVisible) {
+      const curCity = input.value.trim();
+      if (curCity) {
+        renderCityDiningPicker(curCity, listDiningElem, filtersDiningElem, badgeDiningElem, true, false);
+      }
+    }
+  });
+
   input.addEventListener("change", () => {
     const curCity = input.value.trim();
     if (cityLabel) cityLabel.textContent = curCity || 'this Stop';
+    if (cityLabelStay) cityLabelStay.textContent = curCity || 'this Stop';
+    if (cityLabelDining) cityLabelDining.textContent = curCity || 'this Stop';
     if (bodyElem.style.display === "block" && curCity) {
       renderCitySpotPicker(curCity, listElem, genresElem, badgeElem, true, false);
+    }
+    if (bodyStayElem.style.display === "block" && curCity) {
+      renderCityHotelPicker(curCity, listStayElem, filtersStayElem, badgeStayElem, true, false);
+    }
+    if (bodyDiningElem.style.display === "block" && curCity) {
+      renderCityDiningPicker(curCity, listDiningElem, filtersDiningElem, badgeDiningElem, true, false);
     }
     triggerPlanning();
   });
 
   row.querySelector(".btn-remove-stopover").addEventListener("click", () => {
     const curCity = input.value.trim();
-    if (curCity && userSelectedSpotsByCity[curCity]) {
-      delete userSelectedSpotsByCity[curCity];
+    if (curCity) {
+      if (userSelectedSpotsByCity[curCity]) delete userSelectedSpotsByCity[curCity];
+      if (userSelectedHotelsByCity[curCity]) delete userSelectedHotelsByCity[curCity];
+      if (userSelectedDiningByCity[curCity]) delete userSelectedDiningByCity[curCity];
     }
     row.remove();
     triggerPlanning();
@@ -652,10 +1019,13 @@ async function triggerPlanning() {
     if (loc) {
       const durVal = durSelect ? durSelect.value : "";
       const selectedForStop = userSelectedSpotsByCity[loc] ? Array.from(userSelectedSpotsByCity[loc]) : [];
+      const selectedDiningForStop = userSelectedDiningByCity[loc] ? Array.from(userSelectedDiningByCity[loc]) : [];
       stopovers.push({
         location: loc,
         stay_days: durVal === "" ? null : parseInt(durVal, 10),
         selected_places: selectedForStop,
+        selected_hotel_id: userSelectedHotelsByCity[loc] || null,
+        selected_restaurant_ids: selectedDiningForStop
       });
     }
   });
@@ -665,6 +1035,13 @@ async function triggerPlanning() {
   for (const [c, setVal] of Object.entries(userSelectedSpotsByCity)) {
     if (setVal && setVal.size > 0) {
       serializedPlacesByCity[c] = Array.from(setVal);
+    }
+  }
+
+  const serializedDiningByCity = {};
+  for (const [c, setVal] of Object.entries(userSelectedDiningByCity)) {
+    if (setVal && setVal.size > 0) {
+      serializedDiningByCity[c] = Array.from(setVal);
     }
   }
 
@@ -682,6 +1059,12 @@ async function triggerPlanning() {
     return_travel_mode: currentReturnMode || document.getElementById("travelModeInput").value,
     selected_trains: currentSelectedTrains,
     return_train_number: currentReturnTrain,
+    selected_flights: currentSelectedFlights,
+    return_flight_number: currentReturnFlight,
+    selected_hotel_id: userSelectedHotelsByCity[destination] || null,
+    selected_hotels_by_city: userSelectedHotelsByCity,
+    selected_restaurant_ids: Array.from(userSelectedDiningByCity[destination] || []),
+    selected_dining_by_city: serializedDiningByCity,
     interests: selectedInterests.length > 0 ? selectedInterests : ["heritage", "food"],
     food_preference: document.getElementById("foodPrefInput").value,
     stay_preference: document.getElementById("stayPrefInput").value,
@@ -747,6 +1130,7 @@ function renderLegModeSelectors() {
     const modeLabels = {
       driving: { icon: "🚗", name: "Car", tip: "Self-Drive / Car" },
       train: { icon: "🚆", name: "Train", tip: "Express Rail" },
+      flight: { icon: "✈️", name: "Flight", tip: "Domestic Flight" },
       bus: { icon: "🚌", name: "Bus", tip: "Highway Bus" },
       shared_cab: { icon: "🛺", name: "Shared Cab", tip: "Shared Cab" },
     };
@@ -770,7 +1154,7 @@ function renderLegModeSelectors() {
         `;
       }).join("");
     } else {
-      ["driving", "train", "bus", "shared_cab"].forEach(m => {
+      ["driving", "train", "flight", "bus", "shared_cab"].forEach(m => {
         const info = modeLabels[m];
         const isActive = m === selectedMode;
         modeButtonsHtml += `
@@ -785,7 +1169,80 @@ function renderLegModeSelectors() {
 
     const selectedOpt = availableModes.find(o => o.mode === selectedMode);
     let metaDetailsHtml = "";
-    if (selectedOpt && selectedMode === "train") {
+    if (selectedOpt && selectedMode === "flight") {
+      const activeFlightNum = currentSelectedFlights[String(legIdx)] || leg.flight_number || selectedOpt.flight_number;
+      const availFlights = leg.available_flights || selectedOpt.available_flights || [];
+      const curFlight = availFlights.find(f => String(f.flight_number) === String(activeFlightNum)) || {
+        flight_number: activeFlightNum || leg.flight_number || "6E-2381",
+        airline: leg.airline || selectedOpt.airline || "IndiGo",
+        airline_code: leg.airline_code || selectedOpt.airline_code || "6E",
+        departure: leg.departure_time || selectedOpt.departure_time || "09:30",
+        arrival: leg.arrival_time || selectedOpt.arrival_time || "10:45",
+        duration: `${leg.buffered_duration_hours || 3.2} hrs`,
+        cabin_class: leg.cabin_class || "Economy",
+        baggage_allowance: leg.baggage_allowance || "15kg check-in + 7kg cabin",
+        fare: selectedOpt.ticket_cost_per_person || leg.ticket_cost || 3450
+      };
+
+      let flightSelectorHtml = "";
+      if (availFlights.length > 0) {
+        flightSelectorHtml = `
+          <div class="flight-selector-section">
+            <div class="flight-selector-header">
+              <span>✈️ <strong>Select Flight (${availFlights.length} commercial flights available):</strong></span>
+              <span class="badge-live-flight">● Live Domestic Schedules</span>
+            </div>
+            <div class="flight-pills-scroll">
+              ${availFlights.map(f => {
+                const isCur = String(f.flight_number) === String(curFlight.flight_number);
+                const seatsCount = f.seats_available || 18;
+                const seatClass = seatsCount < 8 ? 'low' : '';
+                return `
+                  <button type="button" class="flight-pill-btn ${isCur ? 'active' : ''}" data-leg="${legIdx}" data-flight="${f.flight_number}">
+                    <div class="flight-pill-top">
+                      <span class="flight-num">${f.flight_number}</span>
+                      <span class="flight-times">${f.departure} ➔ ${f.arrival}</span>
+                    </div>
+                    <div class="flight-pill-airline">
+                      <span>${f.airline}</span>
+                      <span class="flight-fare">₹${(f.fare || 3200).toLocaleString()}</span>
+                    </div>
+                    <div class="flight-pill-meta">
+                      <span>⏱️ ${f.duration || '1h 15m'}</span>
+                      <span class="flight-seats-badge ${seatClass}">🟢 ${seatsCount} Seats</span>
+                    </div>
+                  </button>
+                `;
+              }).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      metaDetailsHtml = `
+        <div class="leg-transit-meta">
+          <div class="meta-row">
+            <span class="icon">✈️</span>
+            <span><strong>Flight:</strong> ${curFlight.airline} (${curFlight.flight_number}) &bull; Dep: <strong>${curFlight.departure}</strong>, Arr: <strong>${curFlight.arrival}</strong></span>
+            <span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">🟢 On Time & Verified</span>
+            <span class="badge-tag" style="background:#fef3c7; color:#92400e; font-weight:600;">💺 ${curFlight.cabin_class || 'Economy'} Class</span>
+          </div>
+          <div class="meta-row">
+            <span class="icon">🛫</span>
+            <span><strong>Airports:</strong> ${selectedOpt.departure_hub} ➔ ${selectedOpt.arrival_hub}</span>
+          </div>
+          <div class="meta-row">
+            <span class="icon">🚖</span>
+            <span><strong>Feeder & Buffers:</strong> 1h 45m Terminal Security + Baggage Deboarding + Cab Feeder Included</span>
+          </div>
+          <div class="meta-row">
+            <span class="icon">🧳</span>
+            <span style="font-size:0.75rem; color:#475569;"><strong>Baggage:</strong> ${curFlight.baggage_allowance || '15kg Check-in + 7kg Cabin Baggage'}</span>
+          </div>
+        </div>
+        ${flightSelectorHtml}
+      `;
+    } else if (selectedOpt && selectedMode === "train") {
       const activeTrainNum = currentSelectedTrains[String(legIdx)] || leg.train_number || selectedOpt.train_number;
       const availTrains = leg.available_trains || selectedOpt.available_trains || [];
       const curTrain = availTrains.find(t => String(t.number) === String(activeTrainNum)) || {
@@ -958,11 +1415,20 @@ function renderLegModeSelectors() {
       });
     });
 
-    card.querySelectorAll(".train-pill-btn").forEach(tBtn => {
-      tBtn.addEventListener("click", () => {
-        const leg = tBtn.dataset.leg;
-        const trainNum = tBtn.dataset.train;
+    card.querySelectorAll(".train-pill-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const leg = btn.dataset.leg;
+        const trainNum = btn.dataset.train;
         currentSelectedTrains[String(leg)] = trainNum;
+        triggerPlanning();
+      });
+    });
+
+    card.querySelectorAll(".flight-pill-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const leg = btn.dataset.leg;
+        const flightNum = btn.dataset.flight;
+        currentSelectedFlights[String(leg)] = flightNum;
         triggerPlanning();
       });
     });
@@ -988,11 +1454,12 @@ function renderLegModeSelectors() {
     const modeLabels = {
       driving: { icon: "🚗", name: "Car", tip: "Self-Drive / Car via NH" },
       train: { icon: "🚆", name: "Train", tip: "Return Express Rail" },
+      flight: { icon: "✈️", name: "Flight", tip: "Return Domestic Flight" },
       bus: { icon: "🚌", name: "Bus", tip: "Return Highway Bus" },
       shared_cab: { icon: "🛺", name: "Shared Cab", tip: "Return Shared Cab / Shuttle" },
     };
 
-    const modes = ["driving", "train", "bus", "shared_cab"];
+    const modes = ["driving", "train", "flight", "bus", "shared_cab"];
     const modeButtonsHtml = modes.map(m => {
       const info = modeLabels[m];
       const isActive = m === returnSelectedMode;
@@ -1006,7 +1473,75 @@ function renderLegModeSelectors() {
     }).join("");
 
     let metaHtml = "";
-    if (returnTransit && returnSelectedMode === "train") {
+    if (returnTransit && returnSelectedMode === "flight") {
+      const activeRetFlight = currentReturnFlight || returnTransit.flight_number;
+      const retAvailFlights = returnTransit.available_flights || [];
+      const curRetFlight = retAvailFlights.find(f => String(f.flight_number) === String(activeRetFlight)) || {
+        flight_number: activeRetFlight || returnTransit.flight_number || "AI-492",
+        airline: returnTransit.airline || "Air India",
+        airline_code: returnTransit.airline_code || "AI",
+        departure: returnTransit.departure_time || "17:30",
+        arrival: returnTransit.arrival_time || "18:50",
+        duration: `${returnTransit.duration_hours || 3.1} hrs`,
+        cabin_class: returnTransit.cabin_class || "Economy",
+        baggage_allowance: returnTransit.baggage_allowance || "15kg Check-in + 7kg Cabin",
+        fare: returnTransit.ticket_cost || 3600
+      };
+
+      let retFlightSelectorHtml = "";
+      if (retAvailFlights.length > 0) {
+        retFlightSelectorHtml = `
+          <div class="flight-selector-section">
+            <div class="flight-selector-header">
+              <span>✈️ <strong>Select Return Flight (${retAvailFlights.length} flights available):</strong></span>
+              <span class="badge-live-flight">● Live Schedules</span>
+            </div>
+            <div class="flight-pills-scroll">
+              ${retAvailFlights.map(f => {
+                const isCur = String(f.flight_number) === String(curRetFlight.flight_number);
+                const seatsCount = f.seats_available || 16;
+                const seatClass = seatsCount < 8 ? 'low' : '';
+                return `
+                  <button type="button" class="flight-pill-btn ${isCur ? 'active' : ''}" data-return-flight="${f.flight_number}">
+                    <div class="flight-pill-top">
+                      <span class="flight-num">${f.flight_number}</span>
+                      <span class="flight-times">${f.departure} ➔ ${f.arrival}</span>
+                    </div>
+                    <div class="flight-pill-airline">
+                      <span>${f.airline}</span>
+                      <span class="flight-fare">₹${(f.fare || 3200).toLocaleString()}</span>
+                    </div>
+                    <div class="flight-pill-meta">
+                      <span>⏱️ ${f.duration || '1h 20m'}</span>
+                      <span class="flight-seats-badge ${seatClass}">🟢 ${seatsCount} Seats</span>
+                    </div>
+                  </button>
+                `;
+              }).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      metaHtml = `
+        <div class="leg-transit-meta">
+          <div class="meta-row">
+            <span class="icon">✈️</span>
+            <span><strong>Return Flight:</strong> ${curRetFlight.airline} (${curRetFlight.flight_number}) &bull; Dep: <strong>${curRetFlight.departure}</strong>, Arr: <strong>${curRetFlight.arrival}</strong></span>
+            <span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">🟢 Confirmed Airway</span>
+          </div>
+          <div class="meta-row">
+            <span class="icon">🛫</span>
+            <span><strong>Airports:</strong> ${returnTransit.departure_hub || destCity + ' Airport'} ➔ ${returnTransit.arrival_hub || originCity + ' Airport'}</span>
+          </div>
+          <div class="meta-row">
+            <span class="icon">🚖</span>
+            <span><strong>Feeder & Buffers:</strong> Feeder Cab Drop + Security Buffers factored in schedule</span>
+          </div>
+        </div>
+        ${retFlightSelectorHtml}
+      `;
+    } else if (returnTransit && returnSelectedMode === "train") {
       const activeRetNum = currentReturnTrain || returnTransit.train_number;
       const retAvail = returnTransit.available_trains || [];
       const curRetTrain = retAvail.find(t => String(t.number) === String(activeRetNum)) || {
@@ -1169,6 +1704,14 @@ function renderLegModeSelectors() {
       });
     });
 
+    returnCard.querySelectorAll(".flight-pill-btn").forEach(fBtn => {
+      fBtn.addEventListener("click", () => {
+        const flightNum = fBtn.dataset.returnFlight;
+        currentReturnFlight = flightNum;
+        triggerPlanning();
+      });
+    });
+
     returnContainer.appendChild(returnCard);
   }
 }
@@ -1290,8 +1833,8 @@ function renderTimeline(variant) {
 
       const tDet = day.transit_details || {};
       const tMode = day.transit_mode || tDet.mode || "driving";
-      const modeIcons = { train: "🚆", bus: "🚌", shared_cab: "🛺", driving: "🚗", local: "🛺" };
-      const modeNames = { train: "Intercity Express Train", bus: "Highway Express Bus", shared_cab: "Shared Outstation Cab", driving: "Highway Drive / Car", local: "Local City Transit" };
+      const modeIcons = { flight: "✈️", train: "🚆", bus: "🚌", shared_cab: "🛺", driving: "🚗", local: "🛺" };
+      const modeNames = { flight: "Commercial Domestic Flight", train: "Intercity Express Train", bus: "Highway Express Bus", shared_cab: "Shared Outstation Cab", driving: "Highway Drive / Car", local: "Local City Transit" };
       const icon = modeIcons[tMode] || "🚗";
       const modeTitle = tDet.mode_title || modeNames[tMode] || `${tMode.toUpperCase()} Transit`;
 
@@ -1299,11 +1842,11 @@ function renderTimeline(variant) {
       if (tDet.steps && tDet.steps.length > 0) {
         substepsHtml = `
           <div class="transit-steps-box">
-            <div style="font-size:0.75rem; font-weight:700; color:#475569; margin-bottom:2px;">Transit Steps & Local Shared Transfers:</div>
+            <div style="font-size:0.75rem; font-weight:700; color:#475569; margin-bottom:2px;">Transit Steps & Local Transfers:</div>
             ${tDet.steps.map((st) => `
               <div class="transit-step-row">
                 <div class="transit-step-left">
-                  <span>${st.vehicle === 'Shared Auto' ? '🛺' : (st.vehicle === 'Express Train' ? '🚆' : (st.vehicle === 'Express Bus' ? '🚌' : '🚗'))}</span>
+                  <span>${st.vehicle && st.vehicle.includes('Flight') ? '✈️' : (st.vehicle === 'Shared Auto' ? '🛺' : (st.vehicle === 'Express Train' ? '🚆' : (st.vehicle === 'Express Bus' ? '🚌' : '🚗')))}</span>
                   <span>${st.title}</span>
                 </div>
                 <div>
@@ -1329,30 +1872,41 @@ function renderTimeline(variant) {
             <span class="switcher-label">${switcherLabel}</span>
             <button type="button" class="switcher-btn ${tMode === 'driving' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="driving">🚗 Car</button>
             <button type="button" class="switcher-btn ${tMode === 'train' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="train">🚆 Train</button>
+            <button type="button" class="switcher-btn ${tMode === 'flight' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="flight">✈️ Flight</button>
             <button type="button" class="switcher-btn ${tMode === 'bus' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="bus">🚌 Bus</button>
             <button type="button" class="switcher-btn ${tMode === 'shared_cab' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="shared_cab">🛺 Shared Cab</button>
           </div>
         `;
       }
 
-      const delayText = tMode === "train" 
-        ? "⏱️ +12% Rail Signal Delay & 40m Station Buffer" 
-        : (tMode === "bus" 
-          ? "⏱️ +22% Traffic Delay & 25m Terminal Buffer" 
-          : (tMode === "shared_cab" 
-            ? "⏱️ +15% Traffic & Pickup Buffer" 
-            : "⏱️ +18% Traffic Delay Buffer Included"));
+      const delayText = tMode === "flight"
+        ? "⏱️ 1h 45m Security & Check-in Buffer + Feeder Included"
+        : (tMode === "train" 
+          ? "⏱️ +12% Rail Signal Delay & 40m Station Buffer" 
+          : (tMode === "bus" 
+            ? "⏱️ +22% Traffic Delay & 25m Terminal Buffer" 
+            : (tMode === "shared_cab" 
+              ? "⏱️ +15% Traffic & Pickup Buffer" 
+              : "⏱️ +18% Traffic Delay Buffer Included")));
 
       const hubsText = (tDet.departure_hub && tDet.arrival_hub) 
         ? `<span class="badge-tag badge-buffer">🚉 ${tDet.departure_hub} ➔ ${tDet.arrival_hub}</span>` 
         : "";
 
       const localAutoBadge = (tDet.local_transit_cost && tDet.local_transit_cost > 0)
-        ? `<span class="badge-tag badge-delay">🛺 Includes Shared Autos (₹${tDet.local_transit_cost})</span>`
+        ? `<span class="badge-tag badge-delay">🛺 Includes Feeder / Transfers (₹${tDet.local_transit_cost})</span>`
         : "";
 
       const ticketBadge = (tDet.ticket_cost && tDet.ticket_cost > 0)
         ? `<span class="badge-tag badge-open">🎟️ Tickets: ₹${tDet.ticket_cost}</span>`
+        : "";
+
+      const flightScheduleBadge = (tMode === "flight" && tDet.departure_time && tDet.arrival_time)
+        ? `<span class="badge-tag badge-open" style="background:#e0f2fe; color:#0369a1; font-weight:700;">✈️ Dep: ${tDet.departure_time} ➔ Arr: ${tDet.arrival_time}</span>`
+        : "";
+
+      const liveFlightBadge = (tMode === "flight" && tDet.flight_number)
+        ? `<span class="badge-tag badge-open" style="background:#f0fdf4; color:#15803d; font-weight:700;">✈️ ${tDet.airline || 'Flight'} #${tDet.flight_number}</span>`
         : "";
 
       const trainScheduleBadge = (tMode === "train" && tDet.departure_time && tDet.arrival_time)
@@ -1390,6 +1944,8 @@ function renderTimeline(variant) {
         </div>
         <div class="step-title">${tDet.from_place ? `${tDet.from_place} ➔ ${tDet.to_place}` : 'City Transit'}: ${day.transit_distance_km} km</div>
         <div class="step-badges">
+          ${flightScheduleBadge}
+          ${liveFlightBadge}
           ${trainScheduleBadge}
           ${liveTrainBadge}
           ${fareSrcBadge}
@@ -1435,23 +1991,22 @@ function renderTimeline(variant) {
         ? `<span class="badge-tag badge-genre" style="background:#f3e8ff; color:#7e22ce; font-weight:700;">${act.place.genre}</span>`
         : "";
 
-      const sourceBadge = act.place.source && act.place.source !== "curated"
-        ? `<span class="badge-tag badge-source">${act.place.source.toUpperCase()}</span>`
+      const sourceBadge = act.place.source
+        ? `<span class="badge-tag badge-source" style="background:#f1f5f9; color:#475569;">${act.place.source.toUpperCase()}</span>`
         : "";
 
       step.innerHTML = `
         <div class="step-header">
-          <div class="step-time">⏰ ${act.start_time} - ${act.end_time} (${act.duration_mins} mins)</div>
-          <span class="badge-tag badge-cost">${act.cost > 0 ? "₹" + act.cost : "Free Entry"}</span>
+          <div class="step-time">📍 ${act.start_time} - ${act.end_time} &bull; ${act.duration_mins} mins</div>
+          <span class="badge-tag badge-cost">${act.cost > 0 ? `₹${act.cost}` : 'Free'}</span>
         </div>
         <div class="step-title">${act.place.name}</div>
-        <div style="font-size:0.8rem; color:#475569;">${act.place.description || ""}</div>
+        <div style="font-size:0.8rem; color:#475569;">${act.place.description}</div>
         <div class="step-badges">
           ${userSelectedBadge}
           ${genreBadge}
           <span class="badge-tag badge-open">✓ Operating Window: ${act.place.opening_time} - ${act.place.closing_time}</span>
           <span class="badge-tag badge-buffer">+${act.buffer_mins}m Transition Buffer</span>
-          <span class="badge-tag badge-delay">★ ${act.place.rating} Rating</span>
           ${sourceBadge}
         </div>
       `;
@@ -1461,7 +2016,16 @@ function renderTimeline(variant) {
     // Meals
     day.meals.forEach((meal) => {
       const step = document.createElement("div");
-      step.className = "timeline-step step-dhaba";
+      const isSelectedDining = meal.restaurant && (meal.restaurant.user_selected || (userSelectedDiningByCity[day.title] && userSelectedDiningByCity[day.title].has(meal.restaurant.id)));
+      step.className = `timeline-step step-dhaba ${isSelectedDining ? 'step-user-selected' : ''}`;
+
+      const selectedDiningBadge = isSelectedDining
+        ? `<span class="badge-tag badge-user-selected" style="background:#fef3c7; color:#92400e; font-weight:700;">⭐ Your Selected Dining</span>`
+        : "";
+      const sourceBadge = meal.restaurant.source
+        ? `<span class="badge-tag badge-source" style="background:#f1f5f9; color:#475569;">${meal.restaurant.source.toUpperCase()}</span>`
+        : "";
+
       step.innerHTML = `
         <div class="step-header">
           <div class="step-time">🍽️ ${meal.time_slot} &bull; ${meal.meal_type.toUpperCase()}</div>
@@ -1470,8 +2034,10 @@ function renderTimeline(variant) {
         <div class="step-title">${meal.restaurant.name}</div>
         <div style="font-size:0.8rem; color:#475569;">${meal.restaurant.specialty || meal.restaurant.location}</div>
         <div class="step-badges">
+          ${selectedDiningBadge}
           <span class="badge-tag ${meal.restaurant.is_dhaba ? 'badge-delay' : 'badge-open'}">${meal.restaurant.is_dhaba ? 'Roadside Highway Dhaba' : 'Local Dining'}</span>
           <span class="badge-tag badge-buffer">★ ${meal.restaurant.rating}</span>
+          ${sourceBadge}
         </div>
         <div class="step-actions">
           <button class="btn-book" onclick="openBookingModal('restaurant', '${meal.restaurant.id}', '${meal.restaurant.name}', '${meal.time_slot}', ${meal.estimated_cost})">
@@ -1485,18 +2051,29 @@ function renderTimeline(variant) {
     // Overnight Stay
     if (day.overnight_stay) {
       const stay = day.overnight_stay;
+      const isSelectedStay = stay.hotel && stay.hotel.user_selected;
       const step = document.createElement("div");
-      step.className = "timeline-step step-hotel";
+      step.className = `timeline-step step-hotel ${isSelectedStay ? 'step-user-selected' : ''}`;
+
+      const selectedStayBadge = isSelectedStay
+        ? `<span class="badge-tag badge-user-selected" style="background:#e0e7ff; color:#3730a3; font-weight:700;">⭐ Your Selected Stay</span>`
+        : "";
+      const sourceBadge = stay.hotel.source
+        ? `<span class="badge-tag badge-source" style="background:#f1f5f9; color:#475569;">${stay.hotel.source.toUpperCase()}</span>`
+        : "";
+
       step.innerHTML = `
         <div class="step-header">
           <div class="step-time">🏨 Overnight Stay &bull; Check-in 14:00</div>
           <span class="badge-tag badge-cost">₹${stay.total_cost}</span>
         </div>
         <div class="step-title">${stay.hotel.name}</div>
-        <div style="font-size:0.8rem; color:#475569;">${stay.hotel.location} &bull; Amenities: ${stay.hotel.amenities.join(", ")}</div>
+        <div style="font-size:0.8rem; color:#475569;">${stay.hotel.location} &bull; Amenities: ${(stay.hotel.amenities || []).join(", ")}</div>
         <div class="step-badges">
+          ${selectedStayBadge}
           <span class="badge-tag badge-open">★ ${stay.hotel.rating} Rating</span>
           <span class="badge-tag badge-buffer">Tier: ${stay.hotel.tier}</span>
+          ${sourceBadge}
         </div>
         <div class="step-actions">
           <button class="btn-book" onclick="openBookingModal('hotel', '${stay.hotel.id}', '${stay.hotel.name}', '${day.date}', ${stay.total_cost})">

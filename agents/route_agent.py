@@ -19,13 +19,14 @@ class RouteAgent(BaseAgent):
         leg_modes: Optional[List[str]] = None,
         party_size: int = 1,
         selected_trains: Optional[Dict[str, str]] = None,
+        selected_flights: Optional[Dict[str, str]] = None,
         api_key: Optional[str] = None
     ) -> RouteOption:
         stopover_names = [s.strip() for s in (stopovers or []) if s and s.strip()]
         self.log_step(
             recipient="Planner",
             action="initiate_routing",
-            payload={"origin": origin, "destination": destination, "stopovers": stopover_names, "mode": travel_mode, "leg_modes": leg_modes, "party_size": party_size, "selected_trains": selected_trains},
+            payload={"origin": origin, "destination": destination, "stopovers": stopover_names, "mode": travel_mode, "leg_modes": leg_modes, "party_size": party_size, "selected_trains": selected_trains, "selected_flights": selected_flights},
             notes=f"Querying OSRM & geographical topology for path from {origin} to {destination} via {stopover_names if stopover_names else 'direct corridor'} ({travel_mode})."
         )
 
@@ -38,6 +39,7 @@ class RouteAgent(BaseAgent):
             leg_modes=leg_modes,
             party_size=party_size,
             selected_trains=selected_trains,
+            selected_flights=selected_flights,
             api_key=api_key
         )
 
@@ -67,6 +69,13 @@ class RouteAgent(BaseAgent):
                 departure_time=leg.get("departure_time"),
                 arrival_time=leg.get("arrival_time"),
                 available_trains=leg.get("available_trains", []),
+                flight_number=leg.get("flight_number"),
+                airline=leg.get("airline"),
+                airline_code=leg.get("airline_code"),
+                aircraft=leg.get("aircraft"),
+                cabin_class=leg.get("cabin_class"),
+                baggage_allowance=leg.get("baggage_allowance"),
+                available_flights=leg.get("available_flights", []),
                 fare_source=leg.get("fare_source", "calibrated_model"),
                 fare_currency=leg.get("fare_currency", "₹"),
                 fare_breakdown=leg.get("fare_breakdown", {}),
