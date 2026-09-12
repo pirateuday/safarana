@@ -111,6 +111,16 @@ class PlannerAgent(BaseAgent):
             if stop.location and stop.selected_restaurant_ids:
                 merged_dining_by_city.setdefault(stop.location, []).extend(stop.selected_restaurant_ids)
 
+        merged_dining_slots_by_city: Dict[str, Dict[str, List[str]]] = {}
+        slots_map = trip_input.selected_dining_slots_by_city or {}
+        for c in merged_dining_by_city:
+            merged_dining_slots_by_city[c] = dict(slots_map.get(c) or {})
+
+        merged_dining_days_by_city: Dict[str, Dict[str, Dict[str, List[str]]]] = {}
+        days_map = trip_input.selected_dining_days_by_city or {}
+        for c in merged_dining_by_city:
+            merged_dining_days_by_city[c] = {rid: dict(dm) for rid, dm in (days_map.get(c) or {}).items()}
+
         for city in stay_cities:
             chosen_hotel_id = merged_hotels_by_city.get(city)
             city_hotels = self.food_stay_agent.select_accommodations(
@@ -196,7 +206,9 @@ class PlannerAgent(BaseAgent):
             base_score=9.4,
             weather_forecasts=weather_forecasts,
             hotels_by_city=hotels_by_city,
-            dining_by_city=city_meals_by_city
+            dining_by_city=city_meals_by_city,
+            dining_slots_by_city=merged_dining_slots_by_city,
+            dining_days_by_city=merged_dining_days_by_city
         )
 
         # 4.2. FASTEST VARIANT (Direct travel, minimal friction)
@@ -214,7 +226,9 @@ class PlannerAgent(BaseAgent):
             base_score=8.8,
             weather_forecasts=weather_forecasts,
             hotels_by_city=hotels_by_city,
-            dining_by_city=city_meals_by_city
+            dining_by_city=city_meals_by_city,
+            dining_slots_by_city=merged_dining_slots_by_city,
+            dining_days_by_city=merged_dining_days_by_city
         )
 
         # 4.3. BUDGET VARIANT
@@ -234,7 +248,9 @@ class PlannerAgent(BaseAgent):
             base_score=9.1,
             weather_forecasts=weather_forecasts,
             hotels_by_city=budget_hotels_by_city,
-            dining_by_city=city_meals_by_city
+            dining_by_city=city_meals_by_city,
+            dining_slots_by_city=merged_dining_slots_by_city,
+            dining_days_by_city=merged_dining_days_by_city
         )
 
         # 4.4. SCENIC / EXPLORER VARIANT
@@ -252,7 +268,9 @@ class PlannerAgent(BaseAgent):
             base_score=9.2,
             weather_forecasts=weather_forecasts,
             hotels_by_city=scenic_hotels_by_city,
-            dining_by_city=city_meals_by_city
+            dining_by_city=city_meals_by_city,
+            dining_slots_by_city=merged_dining_slots_by_city,
+            dining_days_by_city=merged_dining_days_by_city
         )
 
         # Collect complete execution trace across all agents
@@ -294,7 +312,9 @@ class PlannerAgent(BaseAgent):
         base_score: float,
         weather_forecasts: Optional[Dict[str, DayWeather]] = None,
         hotels_by_city: Optional[Dict[str, Hotel]] = None,
-        dining_by_city: Optional[Dict[str, List[Restaurant]]] = None
+        dining_by_city: Optional[Dict[str, List[Restaurant]]] = None,
+        dining_slots_by_city: Optional[Dict[str, Dict[str, List[str]]]] = None,
+        dining_days_by_city: Optional[Dict[str, Dict[str, Dict[str, List[str]]]]] = None
     ) -> ItineraryVariant:
         # Schedule timeline
         days = self.scheduler_agent.build_schedule(
@@ -311,6 +331,8 @@ class PlannerAgent(BaseAgent):
             stopovers=trip_input.stopovers,
             hotels_by_city=hotels_by_city,
             dining_by_city=dining_by_city,
+            dining_slots_by_city=dining_slots_by_city,
+            dining_days_by_city=dining_days_by_city,
             return_travel_mode=trip_input.return_travel_mode,
             return_train_number=trip_input.return_train_number,
             return_flight_number=trip_input.return_flight_number or (trip_input.selected_flights.get("return") if trip_input.selected_flights else None)
@@ -360,6 +382,8 @@ class PlannerAgent(BaseAgent):
                 stopovers=trip_input.stopovers,
                 hotels_by_city=hotels_by_city,
                 dining_by_city=dining_by_city,
+                dining_slots_by_city=dining_slots_by_city,
+                dining_days_by_city=dining_days_by_city,
                 return_travel_mode=trip_input.return_travel_mode
             )
             if weather_forecasts:

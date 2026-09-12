@@ -164,6 +164,7 @@ class DayItinerary(BaseModel):
     day_number: int
     date: str
     title: str
+    active_city: str = ""
     activities: List[Activity] = Field(default_factory=list)
     meals: List[Meal] = Field(default_factory=list)
     overnight_stay: Optional[Stay] = None
@@ -256,6 +257,8 @@ class TripInput(BaseModel):
     selected_hotels_by_city: Dict[str, str] = Field(default_factory=dict) # e.g. {"Jaipur": "HTL-JPR-02"}
     selected_restaurant_ids: List[str] = Field(default_factory=list)
     selected_dining_by_city: Dict[str, List[str]] = Field(default_factory=dict) # e.g. {"Jaipur": ["RES-JPR-01"]}
+    selected_dining_slots_by_city: Dict[str, Dict[str, List[str]]] = Field(default_factory=dict) # e.g. {"Jaipur": {"RES-JPR-01": ["dinner"]}}
+    selected_dining_days_by_city: Dict[str, Dict[str, Dict[str, List[str]]]] = Field(default_factory=dict) # e.g. {"Jaipur": {"RES-JPR-01": {"2026-10-02": ["dinner"]}}}
     interests: List[str] = Field(default_factory=lambda: ["heritage", "food", "scenic"])
     food_preference: FoodPreference = FoodPreference.all
     stay_preference: StayPreference = StayPreference.standard_hotel

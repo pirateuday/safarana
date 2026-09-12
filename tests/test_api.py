@@ -50,7 +50,7 @@ class TestAPIEndpoints(unittest.TestCase):
     def test_frontend_serving(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn("SmartRoute", response.text)
+        self.assertIn("Safarana", response.text)
 
     def test_export_ics_endpoint(self):
         payload = {

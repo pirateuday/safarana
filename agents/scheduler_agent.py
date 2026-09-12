@@ -177,6 +177,8 @@ class SchedulerAgent(BaseAgent):
         stopovers: Optional[List[StopoverInput]] = None,
         hotels_by_city: Optional[Dict[str, Hotel]] = None,
         dining_by_city: Optional[Dict[str, List[Restaurant]]] = None,
+        dining_slots_by_city: Optional[Dict[str, Dict[str, List[str]]]] = None,
+        dining_days_by_city: Optional[Dict[str, Dict[str, Dict[str, List[str]]]]] = None,
         return_travel_mode: Optional[str] = None,
         return_train_number: Optional[str] = None,
         return_flight_number: Optional[str] = None
@@ -223,11 +225,60 @@ class SchedulerAgent(BaseAgent):
                 places_per_day[target_day].append(p)
 
         days: List[DayItinerary] = []
+        override_dining_by_city: Dict[str, Dict[str, List[Restaurant]]] = {}
+        override_rotation_index: Dict[str, Dict[str, int]] = {}
+        picked_rest_lookup: Dict[str, Dict[str, Restaurant]] = {}
+
+        if dining_by_city:
+            for city, rest_list in dining_by_city.items():
+                user_picked = [r for r in rest_list if getattr(r, "user_selected", False)]
+                if user_picked:
+                    lookup = {}
+                    for r in user_picked:
+                        lookup[r.id] = r
+                        lookup[r.name] = r
+                    picked_rest_lookup[city] = lookup
+                    slot_lists: Dict[str, List[Restaurant]] = {}
+                    city_slots = (dining_slots_by_city or {}).get(city) or {}
+                    for r in user_picked:
+                        slots = city_slots.get(r.id) or city_slots.get(r.name) or ["lunch", "dinner"]
+                        for slot in slots:
+                            slot_lists.setdefault(slot, []).append(r)
+                    if slot_lists:
+                        override_dining_by_city[city] = slot_lists
+                        override_rotation_index[city] = {slot: 0 for slot in slot_lists}
 
         for day_num in range(1, num_days + 1):
             curr_date = (d_start + timedelta(days=day_num - 1)).strftime("%Y-%m-%d")
             active_city = day_cities[day_num - 1]
-            prev_city = day_cities[day_num - 2] if day_num > 1 else route.origin
+            prev_city = day_cities[day_num - 1 - 1] if day_num > 1 else route.origin
+
+            # User-selected dining pinned to this specific date replaces the day's slots
+            day_dining_pins: Dict[str, Restaurant] = {}
+            city_day_pins = (dining_days_by_city or {}).get(active_city) or {}
+            for rid, date_map in city_day_pins.items():
+                slots_for_date = date_map.get(curr_date) or []
+                if not slots_for_date:
+                    continue
+                picked_rest = (picked_rest_lookup.get(active_city) or {}).get(rid)
+                if picked_rest:
+                    for slot in slots_for_date:
+                        day_dining_pins[slot] = picked_rest
+
+            # User-selected dining replaces the enabled meal slot(s) for any day in/heading to this city
+            city_dining_override: Dict[str, Restaurant] = {}
+            if active_city in override_dining_by_city:
+                for slot in override_dining_by_city[active_city]:
+                    if slot in day_dining_pins:
+                        city_dining_override[slot] = day_dining_pins[slot]
+                    else:
+                        picked = override_dining_by_city[active_city][slot]
+                        idx = override_rotation_index[active_city][slot]
+                        override_rotation_index[active_city][slot] = idx + 1
+                        city_dining_override[slot] = picked[idx % len(picked)]
+            for slot, picked_rest in day_dining_pins.items():
+                city_dining_override.setdefault(slot, picked_rest)
+
             day_places = places_per_day[day_num - 1]
             activities: List[Activity] = []
             meals: List[Meal] = []
@@ -272,14 +323,15 @@ class SchedulerAgent(BaseAgent):
                         # If train runs across midday (11:30 - 14:30), add onboard lunch
                         if dep_mins <= 780 and arr_mins >= 750:
                             lunch_dep = self._mins_to_time_str(max(dep_mins + 45, min(780, (dep_mins + arr_mins) // 2)))
+                            lunch_venue = (city_dining_override.get("lunch") if city_dining_override else None) or (highway_meals[0] if highway_meals else Restaurant(
+                                id=f"PANTRY-{active_city[:3]}", name="IRCTC Pantry Car / Railway Catering",
+                                location=f"Aboard {train_label}", cuisine_type="local_cuisine", avg_cost_per_person=180.0, rating=4.3
+                            ))
                             meals.append(Meal(
                                 meal_type="lunch",
-                                restaurant=highway_meals[0] if highway_meals else Restaurant(
-                                    id=f"PANTRY-{active_city[:3]}", name="IRCTC Pantry Car / Railway Catering",
-                                    location=f"Aboard {train_label}", cuisine_type="local_cuisine", avg_cost_per_person=180.0, rating=4.3
-                                ),
+                                restaurant=lunch_venue,
                                 time_slot=f"{lunch_dep} - {self._mins_to_time_str(self._time_str_to_mins(lunch_dep) + 35)}",
-                                estimated_cost=180.0 * party_size
+                                estimated_cost=lunch_venue.avg_cost_per_person * party_size
                             ))
 
                         t_hotel = self._mins_to_time_str(arr_mins + 35)
@@ -293,14 +345,15 @@ class SchedulerAgent(BaseAgent):
                         half_rail = rail_mins // 2
                         current_time_mins += half_rail
                         lunch_time = self._mins_to_time_str(current_time_mins)
+                        lunch_venue = (city_dining_override.get("lunch") if city_dining_override else None) or (highway_meals[0] if highway_meals else Restaurant(
+                            id=f"PANTRY-{active_city[:3]}", name=f"Railway Catering / Station Kitchen",
+                            location=dep_hub, cuisine_type="local_cuisine", avg_cost_per_person=180.0, rating=4.3
+                        ))
                         meals.append(Meal(
                             meal_type="lunch",
-                            restaurant=highway_meals[0] if highway_meals else Restaurant(
-                                id=f"PANTRY-{active_city[:3]}", name=f"Railway Catering / Station Kitchen",
-                                location=dep_hub, cuisine_type="local_cuisine", avg_cost_per_person=180.0, rating=4.3
-                            ),
+                            restaurant=lunch_venue,
                             time_slot=f"{lunch_time} - {self._mins_to_time_str(current_time_mins + 35)}",
-                            estimated_cost=180.0 * party_size
+                            estimated_cost=lunch_venue.avg_cost_per_person * party_size
                         ))
                         current_time_mins += 35 + DEFAULT_STOP_BUFFER_MINUTES
                         current_time_mins += max(30, rail_mins - half_rail)
@@ -345,6 +398,23 @@ class SchedulerAgent(BaseAgent):
                     t_hotel = self._mins_to_time_str(arr_mins + 45)
                     current_time_mins = arr_mins + 45
 
+                    day_flight_meals = (dining_by_city.get(active_city) if dining_by_city and active_city in dining_by_city else city_meals) or city_meals
+                    if dep_mins <= 780 and arr_mins >= 750:
+                        lunch_f = self._mins_to_time_str(max(dep_mins + 45, min(780, (dep_mins + arr_mins) // 2)))
+                        lunch_venue = (city_dining_override.get("lunch") if city_dining_override else None) or (day_flight_meals[day_num % len(day_flight_meals)] if day_flight_meals else Restaurant(
+                            id=f"AIR-PAN-{active_city[:3]}", name=f"{f_air} Inflight Catering / Airport Lunch",
+                            location=f"Aboard {flight_label}", cuisine_type="local_cuisine", avg_cost_per_person=260.0, rating=4.2
+                        ))
+                        meals.append(Meal(meal_type="lunch", restaurant=lunch_venue, time_slot=f"{lunch_f} - {self._mins_to_time_str(self._time_str_to_mins(lunch_f) + 40)}", estimated_cost=lunch_venue.avg_cost_per_person * party_size))
+                    elif arr_mins <= 855:
+                        lunch_m = max(arr_mins + 60, 780)
+                        if lunch_m <= 885:
+                            lunch_venue = (city_dining_override.get("lunch") if city_dining_override else None) or (day_flight_meals[day_num % len(day_flight_meals)] if day_flight_meals else Restaurant(
+                                id=f"ARR-LU-{active_city[:3]}", name=f"{active_city} Fresh Local Lunch After Landing",
+                                location=active_city, cuisine_type="local_cuisine", avg_cost_per_person=300.0, rating=4.4
+                            ))
+                            meals.append(Meal(meal_type="lunch", restaurant=lunch_venue, time_slot=f"{self._mins_to_time_str(lunch_m)} - {self._mins_to_time_str(lunch_m + 45)}", estimated_cost=lunch_venue.avg_cost_per_person * party_size))
+
                     transit_details = {
                         "mode": "flight",
                         "mode_title": flight_label,
@@ -380,14 +450,15 @@ class SchedulerAgent(BaseAgent):
                     half_bus = bus_mins // 2
                     current_time_mins += half_bus
                     lunch_time = self._mins_to_time_str(current_time_mins)
+                    lunch_venue = (city_dining_override.get("lunch") if city_dining_override else None) or (highway_meals[0] if highway_meals else Restaurant(
+                        id=f"BUS-DHB-{active_city[:3]}", name="Highway Express Rest Stop Dhaba",
+                        location="Interstate Corridor", cuisine_type="roadside_dhaba", avg_cost_per_person=200.0, rating=4.4, is_dhaba=True
+                    ))
                     meals.append(Meal(
                         meal_type="lunch",
-                        restaurant=highway_meals[0] if highway_meals else Restaurant(
-                            id=f"BUS-DHB-{active_city[:3]}", name="Highway Express Rest Stop Dhaba",
-                            location="Interstate Corridor", cuisine_type="roadside_dhaba", avg_cost_per_person=200.0, rating=4.4, is_dhaba=True
-                        ),
+                        restaurant=lunch_venue,
                         time_slot=f"{lunch_time} - {self._mins_to_time_str(current_time_mins + 40)}",
-                        estimated_cost=200.0 * party_size
+                        estimated_cost=lunch_venue.avg_cost_per_person * party_size
                     ))
                     current_time_mins += 40 + DEFAULT_STOP_BUFFER_MINUTES
                     current_time_mins += max(30, bus_mins - half_bus)
@@ -420,14 +491,15 @@ class SchedulerAgent(BaseAgent):
                     half_drive = max(30, drive_mins // 2)
                     current_time_mins += half_drive
                     lunch_time = self._mins_to_time_str(current_time_mins)
+                    lunch_venue = (city_dining_override.get("lunch") if city_dining_override else None) or (highway_meals[0] if highway_meals else Restaurant(
+                        id=f"DHB-CAB-{active_city[:3]}", name="Highway Shared Cab Midway Rest",
+                        location="NH Highway", cuisine_type="roadside_dhaba", avg_cost_per_person=220.0, rating=4.5, is_dhaba=True
+                    ))
                     meals.append(Meal(
                         meal_type="lunch",
-                        restaurant=highway_meals[0] if highway_meals else Restaurant(
-                            id=f"DHB-CAB-{active_city[:3]}", name="Highway Shared Cab Midway Rest",
-                            location="NH Highway", cuisine_type="roadside_dhaba", avg_cost_per_person=220.0, rating=4.5, is_dhaba=True
-                        ),
+                        restaurant=lunch_venue,
                         time_slot=f"{lunch_time} - {self._mins_to_time_str(current_time_mins + 45)}",
-                        estimated_cost=220.0 * party_size
+                        estimated_cost=lunch_venue.avg_cost_per_person * party_size
                     ))
                     current_time_mins += 45 + DEFAULT_STOP_BUFFER_MINUTES
                     current_time_mins += max(30, drive_mins - half_drive)
@@ -458,15 +530,15 @@ class SchedulerAgent(BaseAgent):
                     current_time_mins += drive_leg_1
                     lunch_time = self._mins_to_time_str(current_time_mins)
 
-                    highway_dhaba = highway_meals[0] if highway_meals else Restaurant(
+                    lunch_venue = (city_dining_override.get("lunch") if city_dining_override else None) or (highway_meals[0] if highway_meals else Restaurant(
                         id="DHB-MID", name=f"Midway Grand Dhaba ({route.origin} to {active_city})", location="National Highway",
                         cuisine_type="roadside_dhaba", avg_cost_per_person=220.0, rating=4.5, is_dhaba=True
-                    )
+                    ))
                     meals.append(Meal(
                         meal_type="lunch",
-                        restaurant=highway_dhaba,
+                        restaurant=lunch_venue,
                         time_slot=f"{lunch_time} - {self._mins_to_time_str(current_time_mins + 45)}",
-                        estimated_cost=highway_dhaba.avg_cost_per_person * party_size
+                        estimated_cost=lunch_venue.avg_cost_per_person * party_size
                     ))
                     current_time_mins += 45 + DEFAULT_STOP_BUFFER_MINUTES
                     current_time_mins += max(30, buffered_transit_mins - drive_leg_1)
@@ -563,6 +635,23 @@ class SchedulerAgent(BaseAgent):
                     t_hotel = self._mins_to_time_str(arr_mins + 45)
                     current_time_mins = arr_mins + 45
 
+                    day_flight_meals = (dining_by_city.get(active_city) if dining_by_city and active_city in dining_by_city else city_meals) or city_meals
+                    if dep_mins <= 780 and arr_mins >= 750:
+                        lunch_f = self._mins_to_time_str(max(dep_mins + 45, min(780, (dep_mins + arr_mins) // 2)))
+                        lunch_venue = (city_dining_override.get("lunch") if city_dining_override else None) or (day_flight_meals[day_num % len(day_flight_meals)] if day_flight_meals else Restaurant(
+                            id=f"AIR-PAN-{active_city[:3]}", name=f"{f_air} Inflight Catering / Airport Lunch",
+                            location=f"Aboard {flight_label}", cuisine_type="local_cuisine", avg_cost_per_person=260.0, rating=4.2
+                        ))
+                        meals.append(Meal(meal_type="lunch", restaurant=lunch_venue, time_slot=f"{lunch_f} - {self._mins_to_time_str(self._time_str_to_mins(lunch_f) + 40)}", estimated_cost=lunch_venue.avg_cost_per_person * party_size))
+                    elif arr_mins <= 855:
+                        lunch_m = max(arr_mins + 60, 780)
+                        if lunch_m <= 885:
+                            lunch_venue = (city_dining_override.get("lunch") if city_dining_override else None) or (day_flight_meals[day_num % len(day_flight_meals)] if day_flight_meals else Restaurant(
+                                id=f"ARR-LU-{active_city[:3]}", name=f"{active_city} Fresh Local Lunch After Landing",
+                                location=active_city, cuisine_type="local_cuisine", avg_cost_per_person=300.0, rating=4.4
+                            ))
+                            meals.append(Meal(meal_type="lunch", restaurant=lunch_venue, time_slot=f"{self._mins_to_time_str(lunch_m)} - {self._mins_to_time_str(lunch_m + 45)}", estimated_cost=lunch_venue.avg_cost_per_person * party_size))
+
                     transit_details = {
                         "mode": "flight",
                         "mode_title": flight_label,
@@ -624,15 +713,15 @@ class SchedulerAgent(BaseAgent):
                     current_time_mins += drive_leg
                     lunch_time = self._mins_to_time_str(current_time_mins)
 
-                    lunch_dhaba = highway_meals[day_num % len(highway_meals)] if highway_meals else Restaurant(
+                    lunch_venue = (city_dining_override.get("lunch") if city_dining_override else None) or (highway_meals[day_num % len(highway_meals)] if highway_meals else Restaurant(
                         id=f"DHB-LEG-{day_num}", name=f"{prev_city} to {active_city} Highway Treat", location="Interstate Corridor",
                         cuisine_type="roadside_dhaba", avg_cost_per_person=240.0, rating=4.4, is_dhaba=True
-                    )
+                    ))
                     meals.append(Meal(
                         meal_type="lunch",
-                        restaurant=lunch_dhaba,
+                        restaurant=lunch_venue,
                         time_slot=f"{lunch_time} - {self._mins_to_time_str(current_time_mins + 45)}",
-                        estimated_cost=lunch_dhaba.avg_cost_per_person * party_size
+                        estimated_cost=lunch_venue.avg_cost_per_person * party_size
                     ))
                     current_time_mins += 45 + DEFAULT_STOP_BUFFER_MINUTES
                     current_time_mins += max(30, int(day_transit_hours * 60) - drive_leg)
@@ -681,6 +770,19 @@ class SchedulerAgent(BaseAgent):
                     dep_mins = self._time_str_to_mins(flight_dep)
                     feeder_start = self._mins_to_time_str(max(300, dep_mins - 120))
                     dep_hub_reach = self._mins_to_time_str(max(340, dep_mins - 75))
+
+                    ret_flight_meals = (dining_by_city.get(active_city) if dining_by_city and active_city in dining_by_city else city_meals) or city_meals
+                    lunch_r = None
+                    if dep_mins >= 870:
+                        lunch_r = 780
+                    elif dep_mins >= 750:
+                        lunch_r = max(660, dep_mins - 120)
+                    if lunch_r is not None:
+                        lunch_venue = (city_dining_override.get("lunch") if city_dining_override else None) or (ret_flight_meals[day_num % len(ret_flight_meals)] if ret_flight_meals else Restaurant(
+                            id=f"PRE-FLY-{active_city[:3]}", name=f"{active_city} Local Lunch Before Departure",
+                            location=active_city, cuisine_type="local_cuisine", avg_cost_per_person=300.0, rating=4.4
+                        ))
+                        meals.append(Meal(meal_type="lunch", restaurant=lunch_venue, time_slot=f"{self._mins_to_time_str(lunch_r)} - {self._mins_to_time_str(lunch_r + 45)}", estimated_cost=lunch_venue.avg_cost_per_person * party_size))
 
                     return_steps = [
                         {"title": f"Pre-booked Feeder Cab to {dep_hub}", "time": f"{feeder_start} - {dep_hub_reach}", "cost": 450.0, "vehicle": "Airport Cab"},
@@ -792,6 +894,20 @@ class SchedulerAgent(BaseAgent):
                 transit_details["live_delay_mins"] = leg_info.get("live_delay_mins", 0)
                 transit_details["live_status_text"] = leg_info.get("live_status_text", "Scheduled")
 
+            # Schedule lunch meal for full exploration days in the stay city
+            if day_places and not is_start_day and not is_return_day and not is_transition_day:
+                local_lunch_meals = (dining_by_city.get(active_city) if dining_by_city and active_city in dining_by_city else city_meals) or city_meals
+                lunch_venue = (city_dining_override.get("lunch") if city_dining_override else None) or (local_lunch_meals[(day_num + 1) % len(local_lunch_meals)] if local_lunch_meals else Restaurant(
+                    id=f"RES-{active_city[:3].upper()}-L", name=f"{active_city} Local Bistro Lunch Spot",
+                    location=active_city, cuisine_type="local_cuisine", avg_cost_per_person=300.0, rating=4.4
+                ))
+                meals.append(Meal(
+                    meal_type="lunch",
+                    restaurant=lunch_venue,
+                    time_slot="13:00 - 13:45",
+                    estimated_cost=lunch_venue.avg_cost_per_person * party_size
+                ))
+
             # Schedule sightseeing spots for this day in active_city (user-selected first)
             sorted_day_places = sorted(day_places, key=lambda p: not p.user_selected)
             for idx, p in enumerate(sorted_day_places):
@@ -830,10 +946,10 @@ class SchedulerAgent(BaseAgent):
             # Schedule dinner meal in active_city
             dinner_time = max(current_time_mins, self._time_str_to_mins("20:00"))
             available_city_meals = (dining_by_city.get(active_city) if dining_by_city and active_city in dining_by_city else city_meals) or city_meals
-            city_venue = available_city_meals[day_num % len(available_city_meals)] if available_city_meals else Restaurant(
+            city_venue = (city_dining_override.get("dinner") if city_dining_override else None) or (available_city_meals[day_num % len(available_city_meals)] if available_city_meals else Restaurant(
                 id=f"RES-{active_city[:3].upper()}", name=f"{active_city} Local Heritage Kitchen", location=active_city,
                 cuisine_type="local_cuisine", avg_cost_per_person=350.0, rating=4.5
-            )
+            ))
             meals.append(Meal(
                 meal_type="dinner",
                 restaurant=city_venue,
@@ -884,6 +1000,7 @@ class SchedulerAgent(BaseAgent):
                 day_number=day_num,
                 date=curr_date,
                 title=title,
+                active_city=active_city,
                 activities=activities,
                 meals=meals,
                 overnight_stay=overnight,

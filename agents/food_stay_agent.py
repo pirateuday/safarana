@@ -19,6 +19,15 @@ class FoodStayAgent(BaseAgent):
         )
 
         results = self.execute_tool("search_hotels", location=location, budget_tier=stay_tier, party_size=party_size)
+        if selected_hotel_id:
+            full_results = self.execute_tool("search_hotels", location=location, budget_tier=None, party_size=party_size)
+            known_ids = {h["id"] for h in results}
+            for h in full_results:
+                if h["id"] in known_ids:
+                    continue
+                if h["id"] == selected_hotel_id or h["name"].strip().lower() == selected_hotel_id.strip().lower():
+                    results.append(h)
+                    known_ids.add(h["id"])
         hotels = [
             Hotel(
                 id=h["id"],

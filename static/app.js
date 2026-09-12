@@ -16,7 +16,13 @@ let currentSelectedFlights = {};
 let currentReturnFlight = null;
 let userSelectedSpotsByCity = {};
 let userSelectedHotelsByCity = {};
+let userSelectedHotelObjsByCity = {};
 let userSelectedDiningByCity = {};
+let userSelectedDiningObjsByCity = {};
+let userSelectedDiningSlotsByCity = {};
+let userSelectedDiningDaysByCity = {};
+let predefinedSelectionSnapshot = null;
+let selectionReplanTimer = null;
 let citySpotsCache = {};
 let cityHotelsCache = {};
 let cityDiningCache = {};
@@ -655,11 +661,15 @@ async function renderCityHotelPicker(cityName, listElem, filtersElem, badgeElem,
     card.addEventListener("click", () => {
       if (isSelected) {
         delete userSelectedHotelsByCity[cityName];
+        if (userSelectedHotelObjsByCity) delete userSelectedHotelObjsByCity[cityName];
       } else {
         userSelectedHotelsByCity[cityName] = h.id;
+        if (!userSelectedHotelObjsByCity) userSelectedHotelObjsByCity = {};
+        userSelectedHotelObjsByCity[cityName] = h;
       }
       renderCityHotelPicker(cityName, listElem, filtersElem, badgeElem, isStopover, false);
-      triggerPlanning();
+      applySelectionOverridesLive();
+      scheduleSelectionReplan();
     });
 
     listElem.appendChild(card);
@@ -703,42 +713,365 @@ async function renderCityDiningPicker(cityName, listElem, filtersElem, badgeElem
   restaurants.forEach(r => {
     const isSelected = selectedSet.has(r.id) || selectedSet.has(r.name);
     const card = document.createElement("div");
-    card.className = `hospitality-item-card ${isSelected ? 'selected' : ''}`;
+    card.className = `hospitality-item-card dining-card ${isSelected ? 'selected' : ''}`;
     const src = r.source || "curated";
     const srcBadgeClass = src === "google_places" ? "source-google" : src === "osm" ? "source-osm" : "source-curated";
     const srcText = src === "google_places" ? "Google Places" : src === "osm" ? "OSM" : "Dhaba Curated";
     const dish = r.specialty ? `• ${r.specialty}` : `• ${(r.cuisine_type || 'local').replace('_', ' ')}`;
 
+    let slotsRow = "";
+    if (isSelected) {
+      const slots = getDiningSlotsFor(cityName, r.id);
+      slotsRow = `
+        <div class="slot-toggle-row">
+          <span class="slot-toggle-label">Applies to:</span>
+          <button type="button" class="slot-toggle-btn ${slots.has('lunch') ? 'on' : ''}" data-slot="lunch">Lunch</button>
+          <button type="button" class="slot-toggle-btn ${slots.has('dinner') ? 'on' : ''}" data-slot="dinner">Dinner</button>
+        </div>
+      `;
+    }
+
+    const cityDates = cityPlanDays(cityName);
+    let daysRow = "";
+    if (isSelected && cityDates.length > 0) {
+      const pinMap = diningPinMapForRest(cityName, r.id);
+      const dayChips = cityDates.map((d) => {
+        const on = pinMap && pinMap.has(d.date) ? " on" : "";
+        return `<button type="button" class="day-toggle-btn${on}" data-date="${d.date}" title="Day ${d.day_number} — ${d.date}">D${d.day_number}<span class="day-toggle-d">${formatDateShort(d.date)}</span></button>`;
+      }).join("");
+      daysRow = `
+        <div class="day-toggle-row">
+          <span class="day-toggle-label">On days:</span>
+          <span class="day-toggle-hint">pick exact dates for this place</span>
+          ${dayChips}
+        </div>
+      `;
+    }
+
     card.innerHTML = `
-      <div class="hosp-info">
-        <div class="hosp-name">${r.name}</div>
-        <div class="hosp-sub">
-          <span class="hosp-source-badge ${srcBadgeClass}">${srcText}</span>
-          <span>★ ${r.rating || 4.4}</span>
-          <span style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${dish}</span>
+      <div class="hosp-row">
+        <div class="hosp-info">
+          <div class="hosp-name">${r.name}</div>
+          <div class="hosp-sub">
+            <span class="hosp-source-badge ${srcBadgeClass}">${srcText}</span>
+            <span>★ ${r.rating || 4.4}</span>
+            <span style="max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${dish}</span>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+          <span class="hosp-price">~₹${(r.avg_cost_per_person || 250).toLocaleString()}/p</span>
+          <button type="button" class="hosp-select-btn">
+            ${isSelected ? '✓ Picked' : 'Select'}
+          </button>
         </div>
       </div>
-      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
-        <span class="hosp-price">~₹${(r.avg_cost_per_person || 250).toLocaleString()}/p</span>
-        <button type="button" class="hosp-select-btn">
-          ${isSelected ? '✓ Picked' : 'Select'}
-        </button>
-      </div>
+      ${slotsRow}
+      ${daysRow}
     `;
 
-    card.addEventListener("click", () => {
+    card.addEventListener("click", (e) => {
+      if (e.target.closest(".slot-toggle-btn")) return;
+      if (e.target.closest(".day-toggle-btn")) return;
       if (isSelected) {
         selectedSet.delete(r.id);
         selectedSet.delete(r.name);
+        if (userSelectedDiningObjsByCity[cityName]) {
+          userSelectedDiningObjsByCity[cityName].delete(r.id);
+        }
+        if (userSelectedDiningSlotsByCity[cityName]) {
+          userSelectedDiningSlotsByCity[cityName].delete(r.id);
+        }
+        if (userSelectedDiningDaysByCity[cityName]) {
+          userSelectedDiningDaysByCity[cityName].delete(r.id);
+        }
       } else {
         selectedSet.add(r.id);
+        if (!userSelectedDiningObjsByCity[cityName]) userSelectedDiningObjsByCity[cityName] = new Map();
+        userSelectedDiningObjsByCity[cityName].set(r.id, r);
+        if (!userSelectedDiningSlotsByCity[cityName]) userSelectedDiningSlotsByCity[cityName] = new Map();
+        userSelectedDiningSlotsByCity[cityName].set(r.id, new Set(["lunch", "dinner"]));
       }
       renderCityDiningPicker(cityName, listElem, filtersElem, badgeElem, isStopover, false);
-      triggerPlanning();
+      applySelectionOverridesLive();
+      scheduleSelectionReplan();
+    });
+
+    card.querySelectorAll(".slot-toggle-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const slot = btn.dataset.slot;
+        const slots = getDiningSlotsFor(cityName, r.id);
+        if (slots.has(slot)) slots.delete(slot); else slots.add(slot);
+        renderCityDiningPicker(cityName, listElem, filtersElem, badgeElem, isStopover, false);
+        applySelectionOverridesLive();
+        scheduleSelectionReplan();
+      });
+    });
+
+    card.querySelectorAll(".day-toggle-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const date = btn.dataset.date;
+        if (!userSelectedDiningDaysByCity[cityName]) userSelectedDiningDaysByCity[cityName] = new Map();
+        let dateMap = userSelectedDiningDaysByCity[cityName].get(r.id);
+        if (!dateMap) {
+          dateMap = new Map();
+          userSelectedDiningDaysByCity[cityName].set(r.id, dateMap);
+        }
+        if (dateMap.has(date)) {
+          dateMap.delete(date);
+          if (dateMap.size === 0) userSelectedDiningDaysByCity[cityName].delete(r.id);
+        } else {
+          dateMap.set(date, new Set(getDiningSlotsFor(cityName, r.id)));
+        }
+        renderCityDiningPicker(cityName, listElem, filtersElem, badgeElem, isStopover, false);
+        applySelectionOverridesLive();
+        scheduleSelectionReplan();
+      });
     });
 
     listElem.appendChild(card);
   });
+}
+
+function cloneJson(obj) {
+  return obj ? JSON.parse(JSON.stringify(obj)) : obj;
+}
+
+function getDiningSlotsFor(city, restId) {
+  if (!userSelectedDiningSlotsByCity[city]) userSelectedDiningSlotsByCity[city] = new Map();
+  if (!userSelectedDiningSlotsByCity[city].has(restId)) {
+    userSelectedDiningSlotsByCity[city].set(restId, new Set(["lunch", "dinner"]));
+  }
+  return userSelectedDiningSlotsByCity[city].get(restId);
+}
+
+function pickedDiningForCity(city) {
+  const objs = userSelectedDiningObjsByCity[city];
+  if (!objs || objs.size === 0) return [];
+  const sel = userSelectedDiningByCity[city];
+  const out = [];
+  objs.forEach((r, id) => {
+    if (sel && (sel.has(id) || sel.has(r && r.name))) out.push(r);
+  });
+  return out;
+}
+
+function diningOverridesForCity(city) {
+  const ov = { lunch: [], dinner: [] };
+  pickedDiningForCity(city).forEach((r) => {
+    if (!r) return;
+    const slots = userSelectedDiningSlotsByCity[city] && userSelectedDiningSlotsByCity[city].get(r.id)
+      ? userSelectedDiningSlotsByCity[city].get(r.id)
+      : new Set(["lunch", "dinner"]);
+    if (slots.has("lunch")) ov.lunch.push(r);
+    if (slots.has("dinner")) ov.dinner.push(r);
+  });
+  return ov;
+}
+
+function cityPlanDays(city) {
+  const firstKey = currentPlan && currentPlan.options ? Object.keys(currentPlan.options)[0] : null;
+  const v = firstKey ? currentPlan.options[firstKey] : null;
+  if (!v) return [];
+  return (v.days || []).filter((d) => (d.active_city || "").toLowerCase() === String(city).toLowerCase())
+    .map((d) => ({ day_number: d.day_number, date: d.date }))
+    .filter((d) => d.date);
+}
+
+function formatDateShort(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
+function diningPinMapForRest(city, restId) {
+  if (!userSelectedDiningDaysByCity[city]) return null;
+  if (!userSelectedDiningDaysByCity[city].has(restId)) return null;
+  return userSelectedDiningDaysByCity[city].get(restId);
+}
+
+function diningPinsForDate(city, date) {
+  const pins = { lunch: [], dinner: [] };
+  const cityMap = userSelectedDiningDaysByCity[city];
+  if (!cityMap || !date) return pins;
+  const objs = userSelectedDiningObjsByCity[city];
+  cityMap.forEach((dateMap, rid) => {
+    const slotSet = dateMap.get(date);
+    if (!slotSet || slotSet.size === 0) return;
+    const rest = objs && objs.get(rid);
+    if (!rest) return;
+    if (slotSet.has("lunch")) pins.lunch.push(rest);
+    if (slotSet.has("dinner")) pins.dinner.push(rest);
+  });
+  return pins;
+}
+
+function planStructureSignature() {
+  const p = currentPlan.input_params || {};
+  const firstKey = currentPlan.options ? Object.keys(currentPlan.options)[0] : null;
+  const v0 = firstKey ? currentPlan.options[firstKey] : null;
+  return JSON.stringify({
+    o: p.origin,
+    d: p.destination,
+    dates: [p.start_date, p.end_date],
+    stops: (p.stopovers || []).map(s => `${s.location}:${s.stay_days || ''}`).join('|'),
+    days: v0 ? v0.days.map(x => x.active_city || '').join('|') : '',
+    mode: p.travel_mode
+  });
+}
+
+function snapshotPlanMeals() {
+  if (!currentPlan) return;
+  const sig = planStructureSignature();
+  const hasDiningSelections = Object.keys(userSelectedDiningByCity || {}).some(
+    (c) => userSelectedDiningByCity[c] && userSelectedDiningByCity[c].size > 0
+  );
+  const hasHotelSelections = Object.keys(userSelectedHotelsByCity || {}).length > 0;
+  if ((hasDiningSelections || hasHotelSelections)
+      && predefinedSelectionSnapshot && predefinedSelectionSnapshot.signature === sig) {
+    return;
+  }
+  const fallbackCity = (currentPlan.input_params && currentPlan.input_params.destination) || "";
+  const variants = {};
+  for (const [key, v] of Object.entries(currentPlan.options || {})) {
+    const days = (v.days || []).map((day) => {
+      const stay = day.overnight_stay || null;
+      return {
+        date: day.date || "",
+        active_city: day.active_city
+          || (stay && stay.hotel && stay.hotel.location)
+          || fallbackCity,
+        foodCost: (day.day_cost_breakdown && day.day_cost_breakdown.food) || 0,
+        stayCost: (day.day_cost_breakdown && day.day_cost_breakdown.stay) || 0,
+        totalCost: day.total_day_cost || 0,
+        meals: (day.meals || []).map((m) => ({
+          meal_type: m.meal_type,
+          estimated_cost: m.estimated_cost || 0,
+          time_slot: m.time_slot || "",
+          booked: m.booked || false,
+          booking_id: m.booking_id || null,
+          restaurant: cloneJson(m.restaurant)
+        })),
+        stayInfo: stay ? {
+          hotel: cloneJson(stay.hotel),
+          check_in_date: stay.check_in_date || "",
+          nights: stay.nights || 1,
+          booked: stay.booked || false,
+          booking_id: stay.booking_id || null,
+          totalCost: stay.total_cost || 0
+        } : null
+      };
+    });
+    variants[key] = {
+      foodTotal: (v.cost_summary && v.cost_summary.food) || 0,
+      stayTotal: (v.cost_summary && v.cost_summary.stays) || 0,
+      totalCost: v.total_cost || 0,
+      days
+    };
+  }
+  predefinedSelectionSnapshot = { signature: sig, variants };
+}
+
+function applySelectionOverridesLive() {
+  if (!currentPlan || !predefinedSelectionSnapshot) return;
+  const partySize = (currentPlan.input_params && currentPlan.input_params.party_size) || 2;
+  const counters = {};
+
+  Object.keys(currentPlan.options || {}).forEach((key) => {
+    const v = currentPlan.options[key];
+    const snapV = predefinedSelectionSnapshot.variants[key];
+    if (!v || !snapV) return;
+    const daySnaps = snapV.days || [];
+
+    const rot = (city, slot) => {
+      if (!counters[city]) counters[city] = {};
+      if (!counters[city][slot]) counters[city][slot] = 0;
+      return counters[city][slot]++;
+    };
+
+    (v.days || []).forEach((day, idx) => {
+      const snapDay = daySnaps[idx];
+      if (!snapDay) return;
+      const city = day.active_city || snapDay.active_city || "";
+      const ov = city ? diningOverridesForCity(city) : { lunch: [], dinner: [] };
+      const dayPins = city ? diningPinsForDate(city, day.date || snapDay.date) : { lunch: [], dinner: [] };
+
+      (day.meals || []).forEach((meal) => {
+        const snapMeal = (snapDay.meals || []).find((m) => m.meal_type === meal.meal_type) || snapDay.meals[0];
+        if (!snapMeal) return;
+        const isOverridable = meal.meal_type === "lunch" || meal.meal_type === "dinner";
+        const pinnedList = dayPins[meal.meal_type] || [];
+        const cwList = ov[meal.meal_type] || [];
+        if (isOverridable && (pinnedList.length > 0 || cwList.length > 0)) {
+          const rest = pinnedList.length > 0 ? pinnedList[0] : cwList[rot(city, meal.meal_type) % cwList.length];
+          meal.restaurant = Object.assign(cloneJson(rest), { user_selected: true });
+          meal.estimated_cost = Math.round((rest.avg_cost_per_person || 0) * partySize);
+          meal.time_slot = snapMeal.time_slot || meal.time_slot;
+        } else {
+          meal.restaurant = cloneJson(snapMeal.restaurant);
+          meal.estimated_cost = snapMeal.estimated_cost;
+          meal.time_slot = snapMeal.time_slot;
+        }
+      });
+
+      // Live stay override: user-selected hotel replaces the AI-picked hotel for this city
+      if (day.overnight_stay) {
+        const pickedHotel = userSelectedHotelObjsByCity && userSelectedHotelObjsByCity[city];
+        if (pickedHotel) {
+          const nights = day.overnight_stay.nights || 1;
+          day.overnight_stay.hotel = Object.assign(cloneJson(pickedHotel), { user_selected: true });
+          day.overnight_stay.total_cost = Math.round((pickedHotel.price_per_night || 0) * nights);
+        } else if (snapDay.stayInfo) {
+          const st = snapDay.stayInfo;
+          day.overnight_stay.hotel = cloneJson(st.hotel);
+          day.overnight_stay.check_in_date = st.check_in_date || day.overnight_stay.check_in_date;
+          day.overnight_stay.nights = st.nights;
+          day.overnight_stay.booked = st.booked;
+          day.overnight_stay.booking_id = st.booking_id || null;
+          day.overnight_stay.total_cost = st.totalCost;
+        }
+      }
+
+      const dayFood = (day.meals || []).reduce((sum, m) => sum + (m.estimated_cost || 0), 0);
+      const dayStay = (day.overnight_stay ? (day.overnight_stay.total_cost || 0) : 0);
+      if (day.day_cost_breakdown) {
+        day.day_cost_breakdown.food = Math.round(dayFood);
+        day.day_cost_breakdown.stay = Math.round(dayStay);
+      }
+      day.total_day_cost = Math.round(
+        snapDay.totalCost - (snapDay.foodCost || 0) - (snapDay.stayCost || 0) + dayFood + dayStay
+      );
+    });
+
+    const newFoodTotal = (v.days || []).reduce(
+      (sum, d) => sum + (d.meals || []).reduce((s, m) => s + (m.estimated_cost || 0), 0), 0
+    );
+    const newStayTotal = (v.days || []).reduce(
+      (sum, d) => sum + (d.overnight_stay ? (d.overnight_stay.total_cost || 0) : 0), 0
+    );
+    if (v.cost_summary) {
+      v.cost_summary.food = Math.round(newFoodTotal);
+      v.cost_summary.stays = Math.round(newStayTotal);
+    }
+    v.total_cost = Math.round(
+      snapV.totalCost - (snapV.foodTotal || 0) - (snapV.stayTotal || 0) + newFoodTotal + newStayTotal
+    );
+  });
+
+  renderParetoCards();
+  const variant = currentPlan.options[activeVariantKey];
+  if (variant) {
+    renderTimeline(variant);
+    renderBudgetAudit(variant);
+  }
+}
+
+function scheduleSelectionReplan() {
+  clearTimeout(selectionReplanTimer);
+  selectionReplanTimer = setTimeout(() => {
+    triggerPlanning();
+  }, 500);
 }
 
 function updateDeadlineDisplay() {
@@ -1120,9 +1453,30 @@ async function triggerPlanning() {
   }
 
   const serializedDiningByCity = {};
+  const serializedDiningSlotsByCity = {};
+  const serializedDiningDaysByCity = {};
   for (const [c, setVal] of Object.entries(userSelectedDiningByCity)) {
     if (setVal && setVal.size > 0) {
       serializedDiningByCity[c] = Array.from(setVal);
+      const slotMap = {};
+      setVal.forEach((id) => {
+        const slots = userSelectedDiningSlotsByCity[c] && userSelectedDiningSlotsByCity[c].get(id);
+        slotMap[id] = slots ? Array.from(slots) : ["lunch", "dinner"];
+      });
+      serializedDiningSlotsByCity[c] = slotMap;
+    }
+    const cityDaysMap = userSelectedDiningDaysByCity[c];
+    if (cityDaysMap && cityDaysMap.size > 0) {
+      const byRest = {};
+      cityDaysMap.forEach((dateMap, rid) => {
+        if (!dateMap || dateMap.size === 0) return;
+        const byDate = {};
+        dateMap.forEach((slotSet, date) => {
+          byDate[date] = Array.from(slotSet);
+        });
+        byRest[rid] = byDate;
+      });
+      if (Object.keys(byRest).length > 0) serializedDiningDaysByCity[c] = byRest;
     }
   }
 
@@ -1146,6 +1500,8 @@ async function triggerPlanning() {
     selected_hotels_by_city: userSelectedHotelsByCity,
     selected_restaurant_ids: Array.from(userSelectedDiningByCity[destination] || []),
     selected_dining_by_city: serializedDiningByCity,
+    selected_dining_slots_by_city: serializedDiningSlotsByCity,
+    selected_dining_days_by_city: serializedDiningDaysByCity,
     interests: selectedInterests.length > 0 ? selectedInterests : ["heritage", "food"],
     food_preference: document.getElementById("foodPrefInput").value,
     stay_preference: document.getElementById("stayPrefInput").value,
@@ -1177,6 +1533,7 @@ function renderAllViews() {
   renderLegModeSelectors();
   renderActiveVariant();
   renderAgentTrace();
+  snapshotPlanMeals();
 }
 
 function renderLegModeSelectors() {
@@ -1310,7 +1667,7 @@ function renderLegModeSelectors() {
           </div>
           <div class="meta-row">
             <span class="icon">${I.flight}</span>
-            <span><strong>Airports:</strong> ${selectedOpt.departure_hub} ➔ ${selectedOpt.arrival_hub}</span>
+            <span><strong>Route:</strong> ${leg.departure_hub || selectedOpt.departure_hub || (leg.from_place ? leg.from_place + ' Airport' : 'Departure')} ${curFlight.flight_number} ➔ ${leg.arrival_hub || selectedOpt.arrival_hub || (leg.to_place ? leg.to_place + ' Airport' : 'Arrival')} ${curFlight.flight_number}</span>
           </div>
           <div class="meta-row">
             <span class="icon">${I.cab}</span>
@@ -1613,7 +1970,7 @@ function renderLegModeSelectors() {
           </div>
           <div class="meta-row">
             <span class="icon">${I.flight}</span>
-            <span><strong>Airports:</strong> ${returnTransit.departure_hub || destCity + ' Airport'} ➔ ${returnTransit.arrival_hub || originCity + ' Airport'}</span>
+            <span><strong>Route:</strong> ${returnTransit.departure_hub || destCity + ' Airport'} ${curRetFlight.flight_number} ➔ ${returnTransit.arrival_hub || originCity + ' Airport'} ${curRetFlight.flight_number}</span>
           </div>
           <div class="meta-row">
             <span class="icon">${I.cab}</span>
@@ -1843,6 +2200,25 @@ function renderActiveVariant() {
   renderBudgetAudit(variant);
 }
 
+function timeToMinutes(str) {
+  const m = /(\d{1,2}):(\d{2})/.exec(str || "");
+  if (m) return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  return null;
+}
+
+function transitTimeKey(tDet) {
+  const candidates = [];
+  if (tDet && tDet.departure_time) candidates.push(tDet.departure_time);
+  if (tDet && Array.isArray(tDet.steps)) {
+    for (const st of tDet.steps) candidates.push(st.time);
+  }
+  for (const c of candidates) {
+    const m = timeToMinutes(c);
+    if (m !== null) return m;
+  }
+  return 5 * 60;
+}
+
 function renderTimeline(variant) {
   const dayPills = document.getElementById("dayFilterContainer");
   const meta = document.getElementById("timelineMeta");
@@ -1907,6 +2283,9 @@ function renderTimeline(variant) {
       timelineContainer.appendChild(weatherBanner);
     }
 
+    const daySteps = [];
+    let orderIdx = 0;
+
     // Day transit notice
     if (day.transit_time_hours > 0 || day.transit_details) {
       const transitStep = document.createElement("div");
@@ -1961,14 +2340,14 @@ function renderTimeline(variant) {
       }
 
       const delayText = tMode === "flight"
-        ? "${I.timer} 1h 45m Security & Check-in Buffer + Feeder Included"
+        ? `${I.timer} 1h 45m Security & Check-in Buffer + Feeder Included`
         : (tMode === "train" 
-          ? "${I.timer} +12% Rail Signal Delay & 40m Station Buffer" 
+          ? `${I.timer} +12% Rail Signal Delay & 40m Station Buffer` 
           : (tMode === "bus" 
-            ? "${I.timer} +22% Traffic Delay & 25m Terminal Buffer" 
+            ? `${I.timer} +22% Traffic Delay & 25m Terminal Buffer` 
             : (tMode === "shared_cab" 
-              ? "${I.timer} +15% Traffic & Pickup Buffer" 
-              : "${I.timer} +18% Traffic Delay Buffer Included")));
+              ? `${I.timer} +15% Traffic & Pickup Buffer` 
+              : `${I.timer} +18% Traffic Delay Buffer Included`)));
 
       const hubsText = (tDet.departure_hub && tDet.arrival_hub) 
         ? `<span class="badge-tag badge-buffer">${I.station} ${tDet.departure_hub} ➔ ${tDet.arrival_hub}</span>` 
@@ -2055,7 +2434,7 @@ function renderTimeline(variant) {
         });
       });
 
-      timelineContainer.appendChild(transitStep);
+      daySteps.push({ key: transitTimeKey(tDet), order: orderIdx++, node: transitStep });
     }
 
     // Activities & Meals
@@ -2091,7 +2470,7 @@ function renderTimeline(variant) {
           ${sourceBadge}
         </div>
       `;
-      timelineContainer.appendChild(step);
+      daySteps.push({ key: timeToMinutes(act.start_time), order: orderIdx++, node: step });
     });
 
     // Meals
@@ -2126,7 +2505,7 @@ function renderTimeline(variant) {
           </button>
         </div>
       `;
-      timelineContainer.appendChild(step);
+      daySteps.push({ key: timeToMinutes(meal.time_slot), order: orderIdx++, node: step });
     });
 
     // Overnight Stay
@@ -2162,8 +2541,16 @@ function renderTimeline(variant) {
           </button>
         </div>
       `;
-      timelineContainer.appendChild(step);
+      daySteps.push({ key: timeToMinutes("14:00"), order: orderIdx++, node: step });
     }
+
+    daySteps.sort((a, b) => {
+      const ka = a.key === null ? Number.MAX_SAFE_INTEGER : a.key;
+      const kb = b.key === null ? Number.MAX_SAFE_INTEGER : b.key;
+      if (ka !== kb) return ka - kb;
+      return a.order - b.order;
+    });
+    daySteps.forEach((s) => timelineContainer.appendChild(s.node));
   });
 }
 
