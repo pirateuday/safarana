@@ -1,4 +1,4 @@
-// SmartRoute Client-Side Application
+// Safarana Client-Side Application
 
 let currentPlan = null;
 let activeVariantKey = "balanced";
@@ -24,8 +24,89 @@ let cityActiveGenre = {};
 let cityActiveStayTier = {};
 let cityActiveCuisine = {};
 
+// ---- Inline SVG symbol set (replaces emoji across the UI) ----
+const ic = (paths) =>
+  `<svg class="s-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+
+const I = {
+  car: ic('<path d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11"/><path d="M4 11h16a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-1"/><path d="M3 17h18"/><circle cx="7.5" cy="17.5" r="1.7"/><circle cx="16.5" cy="17.5" r="1.7"/><path d="M12 5v6"/>'),
+  train: ic('<path d="M8 3.1V7a4 4 0 0 0 8 0V3.1"/><path d="m9 15-1-1"/><path d="m15 15 1-1"/><path d="M9 19c-2.8 0-5-2.2-5-5v-4a8 8 0 0 1 16 0v4c0 2.8-2.2 5-5 5Z"/><path d="m8 19-2 3"/><path d="m16 19 2 3"/>'),
+  station: ic('<path d="M3 16s8-3.2 18-3.2"/><path d="M3 16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2"/><path d="M3 16v-5a9 9 0 0 1 18 0v5"/><path d="M9 10h6"/>'),
+  flight: ic('<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>'),
+  bus: ic('<path d="M4 17 6 5.5A2 2 0 0 1 8 4h8a2 2 0 0 1 2 1.5L20 17"/><path d="M20 17v2a1 1 0 0 1-1 1h-2"/><path d="M4 17v2a1 1 0 0 0 1 1h2"/><path d="M4 12h16"/><circle cx="7.5" cy="17.5" r="1.6"/><circle cx="16.5" cy="17.5" r="1.6"/><path d="M9 7h6"/>'),
+  cab: ic('<path d="M6 9h12"/><path d="M6 9 7 4.5A2 2 0 0 1 9 3h6a2 2 0 0 1 2 1.5L18 9"/><path d="M5 9h14a1 1 0 0 1 1 1v5h-1"/><path d="M3 15v3h2"/><path d="M21 15v3h-2"/><circle cx="7" cy="15" r="1.6"/><circle cx="17" cy="15" r="1.6"/><path d="M7 18h10"/>'),
+  local: ic('<path d="M20 10c0 4.9-5.5 10.2-7.4 11.8a1 1 0 0 1-1.2 0C9.5 20.2 4 14.9 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>'),
+  seat: ic('<rect x="3" y="15" width="18" height="6" rx="1"/><path d="M6 15v-4a3 3 0 0 1 3-3h6a3 3 0 0 1 3 3v4"/><path d="M6 9V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v3"/>'),
+  ticket: ic('<path d="M2 7a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4Z"/><path d="M15 5v14"/>'),
+  clock: ic('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>'),
+  timer: ic('<path d="M5 22h14M5 2h14M17 22v-4.2a2 2 0 0 0-.6-1.4L12 12l-4.4 4.4a2 2 0 0 0-.6 1.4V22M17 2v4.2a2 2 0 0 1-.6 1.4L12 12 7.6 7.6a2 2 0 0 1-.6-1.4V2"/>'),
+  calendar: ic('<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>'),
+  pin: ic('<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>'),
+  landmark: ic('<line x1="3" x2="21" y1="22" y2="22"/><line x1="6" x2="6" y1="18" y2="12"/><line x1="10" x2="10" y1="18" y2="12"/><line x1="14" x2="14" y1="18" y2="12"/><line x1="18" x2="18" y1="18" y2="12"/><polygon points="12 2 20 7 4 7"/>'),
+  hotel: ic('<path d="M2 20v-8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v8"/><path d="M4 10V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"/><path d="M12 4v6"/><path d="M2 18h20"/>'),
+  dining: ic('<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>'),
+  luggage: ic('<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>'),
+  clipboard: ic('<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/>'),
+  globe: ic('<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>'),
+  lightbulb: ic('<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2Z"/>'),
+  info: ic('<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>'),
+  check: ic('<circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 6-6"/>'),
+  alert: ic('<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>'),
+  shield: ic('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/>'),
+  swap: ic('<path d="M7 16V4m0 0L3 8m4-4 4 4"/><path d="M17 8v12m0 0 4-4"/><path d="m17 20-4-4"/>'),
+  fuel: ic('<line x1="3" x2="15" y1="22" y2="22"/><line x1="4" x2="14" y1="9" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 4 0V9.83a2 2 0 0 0-.59-1.42L18 5"/>'),
+  route: ic('<path d="M5 22v-3c0-1 .5-2 1.5-2h11c1 0 1.5 1 1.5 2v3"/><path d="M3 16l3-5h12l3 5"/>'),
+  sun: ic('<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>'),
+  moon: ic('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'),
+  cloud: ic('<path d="M17.5 19a4.5 4.5 0 0 0 .4-9A6 6 0 0 0 6.3 8.2 4.5 4.5 0 0 0 7 17h10.5Z"/>'),
+  rain: ic('<path d="M17.5 19a4.5 4.5 0 0 0 .4-9A6 6 0 0 0 6.3 8.2 4.5 4.5 0 0 0 7 17h10.5Z"/><path d="M7 19l-1.5 3"/><path d="M12 19l-1.5 3"/><path d="M17 19l-1.5 3"/>'),
+  snow: ic('<path d="M17.5 19a4.5 4.5 0 0 0 .4-9A6 6 0 0 0 6.3 8.2 4.5 4.5 0 0 0 7 17h10.5Z"/><path d="M8 16h8"/><path d="M12 13v6"/>'),
+  fog: ic('<path d="M3 7h11M3 11h17M3 15h14"/><path d="M3 19h8"/>'),
+  hot: ic('<path d="M14 4a2 2 0 0 0-4 0v9.2a4 4 0 1 0 4 0Z"/><path d="M12 9v7"/>'),
+};
+
+const dotOn = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#16a34a;margin-right:4px;vertical-align:middle;"></span>';
+const dotAlarm = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#dc2626;margin-right:4px;vertical-align:middle;"></span>';
+const dotWarn = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#d97706;margin-right:4px;vertical-align:middle;"></span>';
+
+function weatherIcon(ic) {
+  const s = (ic || "");
+  const t = s.toLowerCase();
+  if (s.includes("\u2744") || t.includes("frosty") || t.includes("snow")) return I.snow;
+  if (s.includes("\uD83C\uDF27") || t.includes("rain") || t.includes("monsoon") || t.includes("shower")) return I.rain;
+  if (s.includes("\uD83C\uDF2B") || t.includes("fog") || t.includes("mist")) return I.fog;
+  if (s.includes("\uD83D\uDD25") || t.includes("hot") || t.includes("heat") || t.includes("humid")) return I.hot;
+  if (s.includes("\u26C5") || t.includes("cloud") || t.includes("breeze") || t.includes("crisp") || t.includes("overcast")) return I.cloud;
+  return I.sun;
+}
+
+function applyTheme(theme) {
+  const root = document.documentElement;
+  root.setAttribute("data-theme", theme);
+  const iconLight = document.getElementById("themeIconLight");
+  const iconDark = document.getElementById("themeIconDark");
+  if (iconLight) iconLight.style.display = theme === "dark" ? "block" : "none";
+  if (iconDark) iconDark.style.display = theme === "dark" ? "none" : "block";
+}
+
+function initTheme() {
+  const saved = localStorage.getItem("safarana-theme");
+  const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const theme = saved || (prefersDark ? "dark" : "light");
+  applyTheme(theme);
+  const toggleBtn = document.getElementById("themeToggleBtn");
+  if (toggleBtn) {
+    toggleBtn.addEventListener("click", () => {
+      const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      applyTheme(next);
+      localStorage.setItem("safarana-theme", next);
+    });
+  }
+}
+
 // Initialize upon DOM load
 document.addEventListener("DOMContentLoaded", () => {
+  initTheme();
   initMap();
   initEventListeners();
   initLocationControls();
@@ -346,8 +427,8 @@ async function renderCitySpotPicker(cityName, listElem, genresElem, badgeElem, i
     const item = document.createElement("div");
     item.className = `spot-selection-item ${isSelected ? 'selected' : ''}`;
     
-    const feeText = spot.entry_fee_per_person > 0 ? `🎟️ ₹${spot.entry_fee_per_person}` : "🎟️ Free";
-    const hoursText = `⏰ ${spot.opening_time} - ${spot.closing_time}`;
+    const feeText = spot.entry_fee_per_person > 0 ? `${I.ticket} ₹${spot.entry_fee_per_person}` : "${I.ticket} Free";
+    const hoursText = `${I.clock} ${spot.opening_time} - ${spot.closing_time}`;
     const genreBadge = spot.genre ? `<span class="badge-genre">${spot.genre}</span>` : "";
     const sourceBadge = spot.source ? `<span class="badge-source">${spot.source.toUpperCase()}</span>` : "";
 
@@ -747,7 +828,7 @@ function addStopoverRow(city = "", stayDays = "") {
       <!-- Nested Spot Picker for Stopover -->
       <div class="stopover-spot-picker">
         <button type="button" class="btn-toggle-stopover-spots" id="toggle_${stopoverUid}">
-          <span>🏛️ Places in <strong class="stopover-city-label">${city || 'this Stop'}</strong></span>
+          <span>${I.landmark} Places in <strong class="stopover-city-label">${city || 'this Stop'}</strong></span>
           <span class="spot-picker-count-badge" id="badge_${stopoverUid}">0 Selected</span>
           <svg class="spot-picker-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
@@ -762,7 +843,7 @@ function addStopoverRow(city = "", stayDays = "") {
       <!-- Nested Stay Picker for Stopover -->
       <div class="stopover-spot-picker" style="margin-top:6px;">
         <button type="button" class="btn-toggle-stopover-spots" id="toggle_stay_${stopoverUid}">
-          <span>🏨 Stay in <strong class="stopover-city-label-stay">${city || 'this Stop'}</strong></span>
+          <span>${I.hotel} Stay in <strong class="stopover-city-label-stay">${city || 'this Stop'}</strong></span>
           <span class="spot-picker-count-badge" id="badge_stay_${stopoverUid}">Auto-picked</span>
           <svg class="spot-picker-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
@@ -782,7 +863,7 @@ function addStopoverRow(city = "", stayDays = "") {
       <!-- Nested Dining Picker for Stopover -->
       <div class="stopover-spot-picker" style="margin-top:6px;">
         <button type="button" class="btn-toggle-stopover-spots" id="toggle_dining_${stopoverUid}">
-          <span>🍲 Food & Dhabas in <strong class="stopover-city-label-dining">${city || 'this Stop'}</strong></span>
+          <span>${I.dining} Food & Dhabas in <strong class="stopover-city-label-dining">${city || 'this Stop'}</strong></span>
           <span class="spot-picker-count-badge" id="badge_dining_${stopoverUid}">0 Selected</span>
           <svg class="spot-picker-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </button>
@@ -960,7 +1041,7 @@ function downloadCalendarIcs() {
   const url = `/api/plan/${currentPlan.plan_id}/export/ics?variant=${activeVariantKey}`;
   const link = document.createElement("a");
   link.href = url;
-  link.setAttribute("download", `smartroute_${currentPlan.plan_id.toLowerCase()}_${activeVariantKey}.ics`);
+  link.setAttribute("download", `safarana_${currentPlan.plan_id.toLowerCase()}_${activeVariantKey}.ics`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -1004,7 +1085,7 @@ async function triggerPlanning() {
 
   const submitBtn = document.getElementById("planSubmitBtn");
   submitBtn.disabled = true;
-  submitBtn.querySelector(".btn-text").textContent = "Agents Solving Constraints...";
+  submitBtn.querySelector(".btn-text").textContent = "Planning your journey...";
 
   const selectedInterests = Array.from(
     document.querySelectorAll("input[name='interests']:checked")
@@ -1128,17 +1209,17 @@ function renderLegModeSelectors() {
     const availableModes = leg.available_modes || [];
 
     const modeLabels = {
-      driving: { icon: "🚗", name: "Car", tip: "Self-Drive / Car" },
-      train: { icon: "🚆", name: "Train", tip: "Express Rail" },
-      flight: { icon: "✈️", name: "Flight", tip: "Domestic Flight" },
-      bus: { icon: "🚌", name: "Bus", tip: "Highway Bus" },
-      shared_cab: { icon: "🛺", name: "Shared Cab", tip: "Shared Cab" },
+      driving: { icon: I.car, name: "Car", tip: "Self-Drive / Car" },
+      train: { icon: I.train, name: "Train", tip: "Express Rail" },
+      flight: { icon: I.flight, name: "Flight", tip: "Domestic Flight" },
+      bus: { icon: I.bus, name: "Bus", tip: "Highway Bus" },
+      shared_cab: { icon: I.cab, name: "Shared Cab", tip: "Shared Cab" },
     };
 
     let modeButtonsHtml = "";
     if (availableModes.length > 0) {
       modeButtonsHtml = availableModes.map(opt => {
-        const info = modeLabels[opt.mode] || { icon: "🚘", name: opt.mode, tip: opt.mode };
+        const info = modeLabels[opt.mode] || { icon: I.car, name: opt.mode, tip: opt.mode };
         const isActive = opt.mode === selectedMode;
         return `
           <button type="button" class="mode-choice-btn ${isActive ? 'active' : ''}" data-leg="${legIdx}" data-mode="${opt.mode}" title="${opt.description}">
@@ -1189,7 +1270,7 @@ function renderLegModeSelectors() {
         flightSelectorHtml = `
           <div class="flight-selector-section">
             <div class="flight-selector-header">
-              <span>✈️ <strong>Select Flight (${availFlights.length} commercial flights available):</strong></span>
+              <span>${I.flight} <strong>Select Flight (${availFlights.length} commercial flights available):</strong></span>
               <span class="badge-live-flight">● Live Domestic Schedules</span>
             </div>
             <div class="flight-pills-scroll">
@@ -1208,8 +1289,8 @@ function renderLegModeSelectors() {
                       <span class="flight-fare">₹${(f.fare || 3200).toLocaleString()}</span>
                     </div>
                     <div class="flight-pill-meta">
-                      <span>⏱️ ${f.duration || '1h 15m'}</span>
-                      <span class="flight-seats-badge ${seatClass}">🟢 ${seatsCount} Seats</span>
+                      <span>${I.timer} ${f.duration || '1h 15m'}</span>
+                      <span class="flight-seats-badge ${seatClass}">${dotOn} ${seatsCount} Seats</span>
                     </div>
                   </button>
                 `;
@@ -1222,21 +1303,21 @@ function renderLegModeSelectors() {
       metaDetailsHtml = `
         <div class="leg-transit-meta">
           <div class="meta-row">
-            <span class="icon">✈️</span>
+            <span class="icon">${I.flight}</span>
             <span><strong>Flight:</strong> ${curFlight.airline} (${curFlight.flight_number}) &bull; Dep: <strong>${curFlight.departure}</strong>, Arr: <strong>${curFlight.arrival}</strong></span>
-            <span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">🟢 On Time & Verified</span>
-            <span class="badge-tag" style="background:#fef3c7; color:#92400e; font-weight:600;">💺 ${curFlight.cabin_class || 'Economy'} Class</span>
+            <span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">${dotOn} On Time & Verified</span>
+            <span class="badge-tag" style="background:#fef3c7; color:#92400e; font-weight:600;">${I.seat} ${curFlight.cabin_class || 'Economy'} Class</span>
           </div>
           <div class="meta-row">
-            <span class="icon">🛫</span>
+            <span class="icon">${I.flight}</span>
             <span><strong>Airports:</strong> ${selectedOpt.departure_hub} ➔ ${selectedOpt.arrival_hub}</span>
           </div>
           <div class="meta-row">
-            <span class="icon">🚖</span>
+            <span class="icon">${I.cab}</span>
             <span><strong>Feeder & Buffers:</strong> 1h 45m Terminal Security + Baggage Deboarding + Cab Feeder Included</span>
           </div>
           <div class="meta-row">
-            <span class="icon">🧳</span>
+            <span class="icon">${I.luggage}</span>
             <span style="font-size:0.75rem; color:#475569;"><strong>Baggage:</strong> ${curFlight.baggage_allowance || '15kg Check-in + 7kg Cabin Baggage'}</span>
           </div>
         </div>
@@ -1258,7 +1339,7 @@ function renderLegModeSelectors() {
         trainSelectorHtml = `
           <div class="train-selector-section">
             <div class="train-selector-header">
-              <span>🚆 <strong>Select Train (${availTrains.length} direct trains via RailRadar):</strong></span>
+              <span>${I.train} <strong>Select Train (${availTrains.length} direct trains via RailRadar):</strong></span>
               <span class="badge-live-rail">● Live IRCTC API</span>
             </div>
             <div class="train-pills-scroll">
@@ -1275,7 +1356,7 @@ function renderLegModeSelectors() {
                     </div>
                     <div class="train-pill-name" title="${t.name}">${t.name}</div>
                     <div class="train-pill-meta">
-                      <span>⏱️ ${t.duration || ''}</span>
+                      <span>${I.timer} ${t.duration || ''}</span>
                       <span>${t.type || 'Express'}</span>
                     </div>
                     ${seatsSnippet}
@@ -1290,20 +1371,20 @@ function renderLegModeSelectors() {
       const liveInfo = curTrain.live_status || {};
       const liveDelay = liveInfo.delay_minutes || 0;
       const liveBadge = liveDelay > 0
-        ? `<span class="badge-tag badge-delay" style="background:#fee2e2; color:#991b1b; font-weight:700;">🔴 Delayed ${liveDelay}m</span>`
-        : `<span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">🟢 On Time</span>`;
+        ? `<span class="badge-tag badge-delay" style="background:#fee2e2; color:#991b1b; font-weight:700;">${dotAlarm} Delayed ${liveDelay}m</span>`
+        : `<span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">${dotOn} On Time</span>`;
       const curStation = liveInfo.current_station ? ` &bull; At: <strong>${liveInfo.current_station}</strong>` : '';
 
       const fareSrc = selectedOpt.fare_source;
       const fareBadge = (fareSrc === 'google_maps')
-        ? `<span class="badge-tag gmaps-fare-badge">🌐 Google Maps Transit Fare</span>`
-        : `<span class="badge-tag fare-calc-badge">💡 Calibrated Fare</span>`;
+        ? `<span class="badge-tag gmaps-fare-badge">${I.globe} Google Maps Transit Fare</span>`
+        : `<span class="badge-tag fare-calc-badge">${I.lightbulb} Calibrated Fare</span>`;
 
       const seats = curTrain.seat_status || [];
       const seatBadgesHtml = (seats && seats.length > 0)
         ? `
           <div class="meta-row seat-status-row">
-            <span class="icon">💺</span>
+            <span class="icon">${I.seat}</span>
             <div class="seat-badges-container">
               <span class="seat-row-label"><strong>Seat Status:</strong></span>
               ${seats.map(s => `
@@ -1318,7 +1399,7 @@ function renderLegModeSelectors() {
       const coachPosHtml = curTrain.coach_position
         ? `
           <div class="meta-row">
-            <span class="icon">🚃</span>
+            <span class="icon">${I.train}</span>
             <span style="font-size:0.75rem; color:#475569;"><strong>Coach Composition:</strong> <code class="coach-pos-code">${curTrain.coach_position}</code></span>
           </div>
         ` : '';
@@ -1327,7 +1408,7 @@ function renderLegModeSelectors() {
       const timetableBtnHtml = `
         <div class="meta-row timetable-btn-row">
           <button type="button" class="btn-sm-action view-timetable-btn" data-train="${curTrain.number || curTrain.train_number}" data-name="${curTrain.name || curTrain.train_name}">
-            📋 View Actual Route & Timetable (${haltsCount} Halts)
+            ${I.clipboard} View Actual Route & Timetable (${haltsCount} Halts)
           </button>
         </div>
       `;
@@ -1335,17 +1416,17 @@ function renderLegModeSelectors() {
       metaDetailsHtml = `
         <div class="leg-transit-meta">
           <div class="meta-row">
-            <span class="icon">🚆</span>
+            <span class="icon">${I.train}</span>
             <span><strong>Train:</strong> #${curTrain.number} ${curTrain.name} &bull; Dep: <strong>${curTrain.departure}</strong>, Arr: <strong>${curTrain.arrival}</strong></span>
             ${liveBadge}
             ${fareBadge}
           </div>
           <div class="meta-row">
-            <span class="icon">🚉</span>
+            <span class="icon">${I.station}</span>
             <span><strong>Stations:</strong> ${selectedOpt.departure_hub} ➔ ${selectedOpt.arrival_hub}${curStation}</span>
           </div>
           <div class="meta-row">
-            <span class="icon">🛺</span>
+            <span class="icon">${I.cab}</span>
             <span><strong>Feeder:</strong> ${selectedOpt.local_vehicle_type} (₹${selectedOpt.local_shared_transit_cost || 0} included)</span>
           </div>
           ${seatBadgesHtml}
@@ -1357,37 +1438,37 @@ function renderLegModeSelectors() {
     } else if (selectedOpt && (selectedMode === "bus" || selectedMode === "shared_cab")) {
       const fareSrc = selectedOpt.fare_source;
       const fareBadge = (fareSrc === 'google_maps')
-        ? `<span class="badge-tag gmaps-fare-badge">🌐 Google Maps Transit</span>`
-        : `<span class="badge-tag fare-calc-badge">💡 Calibrated Fare</span>`;
+        ? `<span class="badge-tag gmaps-fare-badge">${I.globe} Google Maps Transit</span>`
+        : `<span class="badge-tag fare-calc-badge">${I.lightbulb} Calibrated Fare</span>`;
       const breakdownText = selectedOpt.fare_breakdown ? (selectedOpt.fare_breakdown.description || '') : '';
       metaDetailsHtml = `
         <div class="leg-transit-meta">
           <div class="meta-row">
-            <span class="icon">🚉</span>
+            <span class="icon">${I.station}</span>
             <span><strong>Hubs:</strong> ${selectedOpt.departure_hub} ➔ ${selectedOpt.arrival_hub}</span>
             ${fareBadge}
           </div>
           <div class="meta-row">
-            <span class="icon">🛺</span>
+            <span class="icon">${I.cab}</span>
             <span><strong>Feeder:</strong> ${selectedOpt.local_vehicle_type} (₹${selectedOpt.local_shared_transit_cost || 0} included)</span>
           </div>
-          ${breakdownText ? `<div class="meta-row"><span class="icon">ℹ️</span><span style="font-size:0.75rem; color:#64748b;">${breakdownText}</span></div>` : ''}
+          ${breakdownText ? `<div class="meta-row"><span class="icon">${I.info}</span><span style="font-size:0.75rem; color:#64748b;">${breakdownText}</span></div>` : ''}
         </div>
       `;
     } else if (selectedOpt && selectedMode === "driving") {
       const fareSrc = selectedOpt.fare_source;
       const fareBadge = (fareSrc === 'google_maps')
-        ? `<span class="badge-tag gmaps-fare-badge">🌐 Google Maps Routing</span>`
-        : `<span class="badge-tag fare-calc-badge">💡 Fuel & Tolls</span>`;
+        ? `<span class="badge-tag gmaps-fare-badge">${I.globe} Google Maps Routing</span>`
+        : `<span class="badge-tag fare-calc-badge">${I.lightbulb} Fuel & Tolls</span>`;
       const breakdownText = selectedOpt.fare_breakdown ? (selectedOpt.fare_breakdown.description || '') : '';
       metaDetailsHtml = `
         <div class="leg-transit-meta">
           <div class="meta-row">
-            <span class="icon">🛣️</span>
+            <span class="icon">${I.route}</span>
             <span><strong>Route:</strong> Direct Door-to-Door via NH &bull; +18% Traffic Buffer</span>
             ${fareBadge}
           </div>
-          ${breakdownText ? `<div class="meta-row"><span class="icon">⛽</span><span style="font-size:0.75rem; color:#475569;">${breakdownText}</span></div>` : ''}
+          ${breakdownText ? `<div class="meta-row"><span class="icon">${I.fuel}</span><span style="font-size:0.75rem; color:#475569;">${breakdownText}</span></div>` : ''}
         </div>
       `;
     }
@@ -1452,11 +1533,11 @@ function renderLegModeSelectors() {
     returnCard.className = "return-leg-card";
 
     const modeLabels = {
-      driving: { icon: "🚗", name: "Car", tip: "Self-Drive / Car via NH" },
-      train: { icon: "🚆", name: "Train", tip: "Return Express Rail" },
-      flight: { icon: "✈️", name: "Flight", tip: "Return Domestic Flight" },
-      bus: { icon: "🚌", name: "Bus", tip: "Return Highway Bus" },
-      shared_cab: { icon: "🛺", name: "Shared Cab", tip: "Return Shared Cab / Shuttle" },
+      driving: { icon: I.car, name: "Car", tip: "Self-Drive / Car via NH" },
+      train: { icon: I.train, name: "Train", tip: "Return Express Rail" },
+      flight: { icon: I.flight, name: "Flight", tip: "Return Domestic Flight" },
+      bus: { icon: I.bus, name: "Bus", tip: "Return Highway Bus" },
+      shared_cab: { icon: I.cab, name: "Shared Cab", tip: "Return Shared Cab / Shuttle" },
     };
 
     const modes = ["driving", "train", "flight", "bus", "shared_cab"];
@@ -1493,7 +1574,7 @@ function renderLegModeSelectors() {
         retFlightSelectorHtml = `
           <div class="flight-selector-section">
             <div class="flight-selector-header">
-              <span>✈️ <strong>Select Return Flight (${retAvailFlights.length} flights available):</strong></span>
+              <span>${I.flight} <strong>Select Return Flight (${retAvailFlights.length} flights available):</strong></span>
               <span class="badge-live-flight">● Live Schedules</span>
             </div>
             <div class="flight-pills-scroll">
@@ -1512,8 +1593,8 @@ function renderLegModeSelectors() {
                       <span class="flight-fare">₹${(f.fare || 3200).toLocaleString()}</span>
                     </div>
                     <div class="flight-pill-meta">
-                      <span>⏱️ ${f.duration || '1h 20m'}</span>
-                      <span class="flight-seats-badge ${seatClass}">🟢 ${seatsCount} Seats</span>
+                      <span>${I.timer} ${f.duration || '1h 20m'}</span>
+                      <span class="flight-seats-badge ${seatClass}">${dotOn} ${seatsCount} Seats</span>
                     </div>
                   </button>
                 `;
@@ -1526,16 +1607,16 @@ function renderLegModeSelectors() {
       metaHtml = `
         <div class="leg-transit-meta">
           <div class="meta-row">
-            <span class="icon">✈️</span>
+            <span class="icon">${I.flight}</span>
             <span><strong>Return Flight:</strong> ${curRetFlight.airline} (${curRetFlight.flight_number}) &bull; Dep: <strong>${curRetFlight.departure}</strong>, Arr: <strong>${curRetFlight.arrival}</strong></span>
-            <span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">🟢 Confirmed Airway</span>
+            <span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">${dotOn} Confirmed Airway</span>
           </div>
           <div class="meta-row">
-            <span class="icon">🛫</span>
+            <span class="icon">${I.flight}</span>
             <span><strong>Airports:</strong> ${returnTransit.departure_hub || destCity + ' Airport'} ➔ ${returnTransit.arrival_hub || originCity + ' Airport'}</span>
           </div>
           <div class="meta-row">
-            <span class="icon">🚖</span>
+            <span class="icon">${I.cab}</span>
             <span><strong>Feeder & Buffers:</strong> Feeder Cab Drop + Security Buffers factored in schedule</span>
           </div>
         </div>
@@ -1557,7 +1638,7 @@ function renderLegModeSelectors() {
         retTrainSelectorHtml = `
           <div class="train-selector-section">
             <div class="train-selector-header">
-              <span>🚆 <strong>Select Return Train (${retAvail.length} direct trains via RailRadar):</strong></span>
+              <span>${I.train} <strong>Select Return Train (${retAvail.length} direct trains via RailRadar):</strong></span>
               <span class="badge-live-rail">● Live IRCTC API</span>
             </div>
             <div class="train-pills-scroll">
@@ -1574,7 +1655,7 @@ function renderLegModeSelectors() {
                     </div>
                     <div class="train-pill-name" title="${t.name}">${t.name}</div>
                     <div class="train-pill-meta">
-                      <span>⏱️ ${t.duration || ''}</span>
+                      <span>${I.timer} ${t.duration || ''}</span>
                       <span>${t.type || 'Express'}</span>
                     </div>
                     ${seatsSnippet}
@@ -1589,19 +1670,19 @@ function renderLegModeSelectors() {
       const retLive = curRetTrain.live_status || {};
       const retDelay = retLive.delay_minutes || 0;
       const retLiveBadge = retDelay > 0
-        ? `<span class="badge-tag badge-delay" style="background:#fee2e2; color:#991b1b; font-weight:700;">🔴 Delayed ${retDelay}m</span>`
-        : `<span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">🟢 On Time</span>`;
+        ? `<span class="badge-tag badge-delay" style="background:#fee2e2; color:#991b1b; font-weight:700;">${dotAlarm} Delayed ${retDelay}m</span>`
+        : `<span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">${dotOn} On Time</span>`;
 
       const retFareSrc = returnTransit.fare_source;
       const retFareBadge = (retFareSrc === 'google_maps')
-        ? `<span class="badge-tag gmaps-fare-badge">🌐 Google Maps Fare</span>`
-        : `<span class="badge-tag fare-calc-badge">💡 Calibrated Fare</span>`;
+        ? `<span class="badge-tag gmaps-fare-badge">${I.globe} Google Maps Fare</span>`
+        : `<span class="badge-tag fare-calc-badge">${I.lightbulb} Calibrated Fare</span>`;
 
       const retSeats = curRetTrain.seat_status || [];
       const retSeatBadgesHtml = (retSeats && retSeats.length > 0)
         ? `
           <div class="meta-row seat-status-row">
-            <span class="icon">💺</span>
+            <span class="icon">${I.seat}</span>
             <div class="seat-badges-container">
               <span class="seat-row-label"><strong>Seat Status:</strong></span>
               ${retSeats.map(s => `
@@ -1617,7 +1698,7 @@ function renderLegModeSelectors() {
       const retTimetableBtn = `
         <div class="meta-row timetable-btn-row">
           <button type="button" class="btn-sm-action view-timetable-btn" data-train="${curRetTrain.number}" data-name="${curRetTrain.name}">
-            📋 View Actual Route & Timetable (${retHaltsCount} Halts)
+            ${I.clipboard} View Actual Route & Timetable (${retHaltsCount} Halts)
           </button>
         </div>
       `;
@@ -1625,17 +1706,17 @@ function renderLegModeSelectors() {
       metaHtml = `
         <div class="leg-transit-meta">
           <div class="meta-row">
-            <span class="icon">🚆</span>
+            <span class="icon">${I.train}</span>
             <span><strong>Return Train:</strong> #${curRetTrain.number} ${curRetTrain.name} &bull; Dep: <strong>${curRetTrain.departure}</strong>, Arr: <strong>${curRetTrain.arrival}</strong></span>
             ${retLiveBadge}
             ${retFareBadge}
           </div>
           <div class="meta-row">
-            <span class="icon">🚉</span>
+            <span class="icon">${I.station}</span>
             <span><strong>Stations:</strong> ${returnTransit.departure_hub || destCity + ' Station'} ➔ ${returnTransit.arrival_hub || originCity + ' Station'}</span>
           </div>
           <div class="meta-row">
-            <span class="icon">🛺</span>
+            <span class="icon">${I.cab}</span>
             <span><strong>Feeder:</strong> ${returnTransit.local_vehicle_type || 'Shared Auto'} (₹${returnTransit.local_transit_cost || 0} feeder included)</span>
           </div>
           ${retSeatBadgesHtml}
@@ -1646,17 +1727,17 @@ function renderLegModeSelectors() {
     } else if (returnTransit && (returnSelectedMode === "bus" || returnSelectedMode === "shared_cab")) {
       const retFareSrc = returnTransit.fare_source;
       const retFareBadge = (retFareSrc === 'google_maps')
-        ? `<span class="badge-tag gmaps-fare-badge">🌐 Google Maps Fare</span>`
-        : `<span class="badge-tag fare-calc-badge">💡 Calibrated Fare</span>`;
+        ? `<span class="badge-tag gmaps-fare-badge">${I.globe} Google Maps Fare</span>`
+        : `<span class="badge-tag fare-calc-badge">${I.lightbulb} Calibrated Fare</span>`;
       metaHtml = `
         <div class="leg-transit-meta">
           <div class="meta-row">
-            <span class="icon">🚉</span>
+            <span class="icon">${I.station}</span>
             <span><strong>Hubs:</strong> ${returnTransit.departure_hub || destCity + ' Station'} ➔ ${returnTransit.arrival_hub || originCity + ' Station'}</span>
             ${retFareBadge}
           </div>
           <div class="meta-row">
-            <span class="icon">🛺</span>
+            <span class="icon">${I.cab}</span>
             <span><strong>Feeder:</strong> ${returnTransit.local_vehicle_type || 'Shared Auto'} (₹${returnTransit.local_transit_cost || 0} feeder included)</span>
           </div>
         </div>
@@ -1665,7 +1746,7 @@ function renderLegModeSelectors() {
       metaHtml = `
         <div class="leg-transit-meta">
           <div class="meta-row">
-            <span class="icon">🛣️</span>
+            <span class="icon">${I.route}</span>
             <span><strong>Route:</strong> Return via National Highway &bull; Door-to-Door</span>
           </div>
         </div>
@@ -1677,7 +1758,7 @@ function renderLegModeSelectors() {
     returnCard.innerHTML = `
       <div class="leg-mode-card-header">
         <span class="return-leg-title">
-          <span>🔄 Return Leg:</span>
+          <span>${I.swap} Return Leg:</span>
           <strong>${destCity} ➔ ${originCity}</strong>
         </span>
         <span class="leg-dist-badge">${retDist} km</span>
@@ -1793,7 +1874,7 @@ function renderTimeline(variant) {
   filteredDays.forEach((day) => {
     const dayHeader = document.createElement("div");
     dayHeader.style.cssText = "margin-top:10px; margin-bottom:6px; font-weight:800; font-size:1.05rem; color:#1e293b;";
-    dayHeader.innerHTML = `📅 ${day.title} <span style="font-size:0.75rem; color:#64748b; font-weight:500;">(${day.date})</span>`;
+    dayHeader.innerHTML = `${I.calendar} ${day.title} <span style="font-size:0.75rem; color:#64748b; font-weight:500;">(${day.date})</span>`;
     timelineContainer.appendChild(dayHeader);
 
     // Day weather forecast & packing banner
@@ -1809,16 +1890,16 @@ function renderTimeline(variant) {
         <div class="weather-header">
           <div class="weather-main">
             <div class="weather-icon-temp">
-              <span>${day.weather.icon || "☀️"}</span>
+              <span>${weatherIcon(day.weather.icon)}</span>
               <span>${day.weather.temperature_celsius}°C</span>
             </div>
             <div class="weather-desc">${day.weather.condition}</div>
           </div>
-          ${day.weather.risk_alert ? `<div class="weather-alert-badge">⚠️ ${day.weather.risk_alert}</div>` : ""}
+          ${day.weather.risk_alert ? `<div class="weather-alert-badge">${I.alert} ${day.weather.risk_alert}</div>` : ""}
         </div>
         ${packingChipsHtml ? `
           <div class="weather-packing">
-            <span class="packing-title">🧳 Packing Advisory:</span>
+            <span class="packing-title">${I.luggage} Packing Advisory:</span>
             ${packingChipsHtml}
           </div>
         ` : ""}
@@ -1833,9 +1914,9 @@ function renderTimeline(variant) {
 
       const tDet = day.transit_details || {};
       const tMode = day.transit_mode || tDet.mode || "driving";
-      const modeIcons = { flight: "✈️", train: "🚆", bus: "🚌", shared_cab: "🛺", driving: "🚗", local: "🛺" };
+      const modeIcons = { flight: I.flight, train: I.train, bus: I.bus, shared_cab: I.cab, driving: I.car, local: I.cab };
       const modeNames = { flight: "Commercial Domestic Flight", train: "Intercity Express Train", bus: "Highway Express Bus", shared_cab: "Shared Outstation Cab", driving: "Highway Drive / Car", local: "Local City Transit" };
-      const icon = modeIcons[tMode] || "🚗";
+      const icon = modeIcons[tMode] || I.car;
       const modeTitle = tDet.mode_title || modeNames[tMode] || `${tMode.toUpperCase()} Transit`;
 
       let substepsHtml = "";
@@ -1846,7 +1927,7 @@ function renderTimeline(variant) {
             ${tDet.steps.map((st) => `
               <div class="transit-step-row">
                 <div class="transit-step-left">
-                  <span>${st.vehicle && st.vehicle.includes('Flight') ? '✈️' : (st.vehicle === 'Shared Auto' ? '🛺' : (st.vehicle === 'Express Train' ? '🚆' : (st.vehicle === 'Express Bus' ? '🚌' : '🚗')))}</span>
+                  <span>${st.vehicle && st.vehicle.includes('Flight') ? I.flight : (st.vehicle === 'Shared Auto' ? I.cab : (st.vehicle === 'Express Train' ? I.train : (st.vehicle === 'Express Bus' ? I.bus : I.car)))}</span>
                   <span>${st.title}</span>
                 </div>
                 <div>
@@ -1870,56 +1951,56 @@ function renderTimeline(variant) {
         switcherHtml = `
           <div class="transit-switcher-inline">
             <span class="switcher-label">${switcherLabel}</span>
-            <button type="button" class="switcher-btn ${tMode === 'driving' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="driving">🚗 Car</button>
-            <button type="button" class="switcher-btn ${tMode === 'train' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="train">🚆 Train</button>
-            <button type="button" class="switcher-btn ${tMode === 'flight' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="flight">✈️ Flight</button>
-            <button type="button" class="switcher-btn ${tMode === 'bus' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="bus">🚌 Bus</button>
-            <button type="button" class="switcher-btn ${tMode === 'shared_cab' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="shared_cab">🛺 Shared Cab</button>
+            <button type="button" class="switcher-btn ${tMode === 'driving' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="driving">${I.car} Car</button>
+            <button type="button" class="switcher-btn ${tMode === 'train' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="train">${I.train} Train</button>
+            <button type="button" class="switcher-btn ${tMode === 'flight' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="flight">${I.flight} Flight</button>
+            <button type="button" class="switcher-btn ${tMode === 'bus' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="bus">${I.bus} Bus</button>
+            <button type="button" class="switcher-btn ${tMode === 'shared_cab' ? 'active' : ''}" data-is-return="${isReturnDay}" data-leg="${legIndexForDay}" data-mode="shared_cab">${I.cab} Shared Cab</button>
           </div>
         `;
       }
 
       const delayText = tMode === "flight"
-        ? "⏱️ 1h 45m Security & Check-in Buffer + Feeder Included"
+        ? "${I.timer} 1h 45m Security & Check-in Buffer + Feeder Included"
         : (tMode === "train" 
-          ? "⏱️ +12% Rail Signal Delay & 40m Station Buffer" 
+          ? "${I.timer} +12% Rail Signal Delay & 40m Station Buffer" 
           : (tMode === "bus" 
-            ? "⏱️ +22% Traffic Delay & 25m Terminal Buffer" 
+            ? "${I.timer} +22% Traffic Delay & 25m Terminal Buffer" 
             : (tMode === "shared_cab" 
-              ? "⏱️ +15% Traffic & Pickup Buffer" 
-              : "⏱️ +18% Traffic Delay Buffer Included")));
+              ? "${I.timer} +15% Traffic & Pickup Buffer" 
+              : "${I.timer} +18% Traffic Delay Buffer Included")));
 
       const hubsText = (tDet.departure_hub && tDet.arrival_hub) 
-        ? `<span class="badge-tag badge-buffer">🚉 ${tDet.departure_hub} ➔ ${tDet.arrival_hub}</span>` 
+        ? `<span class="badge-tag badge-buffer">${I.station} ${tDet.departure_hub} ➔ ${tDet.arrival_hub}</span>` 
         : "";
 
       const localAutoBadge = (tDet.local_transit_cost && tDet.local_transit_cost > 0)
-        ? `<span class="badge-tag badge-delay">🛺 Includes Feeder / Transfers (₹${tDet.local_transit_cost})</span>`
+        ? `<span class="badge-tag badge-delay">${I.cab} Includes Feeder / Transfers (₹${tDet.local_transit_cost})</span>`
         : "";
 
       const ticketBadge = (tDet.ticket_cost && tDet.ticket_cost > 0)
-        ? `<span class="badge-tag badge-open">🎟️ Tickets: ₹${tDet.ticket_cost}</span>`
+        ? `<span class="badge-tag badge-open">${I.ticket} Tickets: ₹${tDet.ticket_cost}</span>`
         : "";
 
       const flightScheduleBadge = (tMode === "flight" && tDet.departure_time && tDet.arrival_time)
-        ? `<span class="badge-tag badge-open" style="background:#e0f2fe; color:#0369a1; font-weight:700;">✈️ Dep: ${tDet.departure_time} ➔ Arr: ${tDet.arrival_time}</span>`
+        ? `<span class="badge-tag badge-open" style="background:#e0f2fe; color:#0369a1; font-weight:700;">${I.flight} Dep: ${tDet.departure_time} ➔ Arr: ${tDet.arrival_time}</span>`
         : "";
 
       const liveFlightBadge = (tMode === "flight" && tDet.flight_number)
-        ? `<span class="badge-tag badge-open" style="background:#f0fdf4; color:#15803d; font-weight:700;">✈️ ${tDet.airline || 'Flight'} #${tDet.flight_number}</span>`
+        ? `<span class="badge-tag badge-open" style="background:#f0fdf4; color:#15803d; font-weight:700;">${I.flight} ${tDet.airline || 'Flight'} #${tDet.flight_number}</span>`
         : "";
 
       const trainScheduleBadge = (tMode === "train" && tDet.departure_time && tDet.arrival_time)
-        ? `<span class="badge-tag badge-open" style="background:#dbeafe; color:#1e40af; font-weight:700;">🚆 Dep: ${tDet.departure_time} ➔ Arr: ${tDet.arrival_time}</span>`
+        ? `<span class="badge-tag badge-open" style="background:#dbeafe; color:#1e40af; font-weight:700;">${I.train} Dep: ${tDet.departure_time} ➔ Arr: ${tDet.arrival_time}</span>`
         : "";
 
       const liveTrainBadge = (tMode === "train" && tDet.train_number)
-        ? `<span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">🟢 Train #${tDet.train_number}</span>`
+        ? `<span class="badge-tag badge-open" style="background:#dcfce7; color:#166534; font-weight:700;">${dotOn} Train #${tDet.train_number}</span>`
         : "";
 
       const fareSrcBadge = (tDet.fare_source === "google_maps")
-        ? `<span class="badge-tag gmaps-fare-badge">🌐 Google Maps Fare</span>`
-        : `<span class="badge-tag fare-calc-badge">💡 Calibrated Fare</span>`;
+        ? `<span class="badge-tag gmaps-fare-badge">${I.globe} Google Maps Fare</span>`
+        : `<span class="badge-tag fare-calc-badge">${I.lightbulb} Calibrated Fare</span>`;
 
       const tSeats = tDet.seat_status || [];
       const daySeatsBadge = (tSeats && tSeats.length > 0)
@@ -1933,7 +2014,7 @@ function renderTimeline(variant) {
         : (tDet.halts || 5);
       const dayTimetableBtn = (tMode === "train" && tDet.train_number)
         ? `<button type="button" class="btn-sm-action view-timetable-btn" data-train="${tDet.train_number}" data-name="${tDet.train_name || ''}" style="margin-top:6px; font-size:0.75rem;">
-            📋 View Route & Timetable (${tHalts} Halts)
+            ${I.clipboard} View Route & Timetable (${tHalts} Halts)
            </button>`
         : "";
 
@@ -1997,7 +2078,7 @@ function renderTimeline(variant) {
 
       step.innerHTML = `
         <div class="step-header">
-          <div class="step-time">📍 ${act.start_time} - ${act.end_time} &bull; ${act.duration_mins} mins</div>
+          <div class="step-time">${I.pin} ${act.start_time} - ${act.end_time} &bull; ${act.duration_mins} mins</div>
           <span class="badge-tag badge-cost">${act.cost > 0 ? `₹${act.cost}` : 'Free'}</span>
         </div>
         <div class="step-title">${act.place.name}</div>
@@ -2028,7 +2109,7 @@ function renderTimeline(variant) {
 
       step.innerHTML = `
         <div class="step-header">
-          <div class="step-time">🍽️ ${meal.time_slot} &bull; ${meal.meal_type.toUpperCase()}</div>
+          <div class="step-time">${I.dining} ${meal.time_slot} &bull; ${meal.meal_type.toUpperCase()}</div>
           <span class="badge-tag badge-cost">~₹${meal.estimated_cost}</span>
         </div>
         <div class="step-title">${meal.restaurant.name}</div>
@@ -2064,7 +2145,7 @@ function renderTimeline(variant) {
 
       step.innerHTML = `
         <div class="step-header">
-          <div class="step-time">🏨 Overnight Stay &bull; Check-in 14:00</div>
+          <div class="step-time">${I.hotel} Overnight Stay &bull; Check-in 14:00</div>
           <span class="badge-tag badge-cost">₹${stay.total_cost}</span>
         </div>
         <div class="step-title">${stay.hotel.name}</div>
@@ -2103,7 +2184,7 @@ function renderMap(variant) {
 
   const allPlotPoints = [];
 
-  // 1. Plot Origin Marker (🟢)
+  // 1. Plot Origin Marker (${dotOn})
   const origName = currentPlan.input_params.origin;
   let originCoords = null;
   if (variant.corridor_geometry && variant.corridor_geometry.length > 0) {
@@ -2123,7 +2204,7 @@ function renderMap(variant) {
   })
     .bindPopup(`
       <div style="font-family:sans-serif; min-width:160px;">
-        <div style="color:#10b981; font-weight:800; font-size:0.8rem; letter-spacing:0.04em;">🟢 TRIP ORIGIN (START)</div>
+        <div style="color:#10b981; font-weight:800; font-size:0.8rem; letter-spacing:0.04em;">${dotOn} TRIP ORIGIN (START)</div>
         <div style="font-size:1.05rem; font-weight:700; margin:4px 0 2px;">${origName}</div>
         <div style="font-size:0.8rem; color:#475569;">Start Date: <strong>${currentPlan.input_params.start_date}</strong></div>
         <div style="font-size:0.8rem; color:#475569;">Departure: <strong>${currentPlan.input_params.start_time_of_day}</strong></div>
@@ -2131,7 +2212,7 @@ function renderMap(variant) {
     `)
     .addTo(routeLayerGroup);
 
-  // 2. Plot In-Between Stopover Markers (🟡)
+  // 2. Plot In-Between Stopover Markers (${dotWarn})
   const stopovers = currentPlan.input_params.stopovers || [];
   stopovers.forEach((stop, idx) => {
     let stopCoords = getCityCoords(stop.location);
@@ -2171,7 +2252,7 @@ function renderMap(variant) {
     })
       .bindPopup(`
         <div style="font-family:sans-serif; min-width:160px;">
-          <div style="color:#f59e0b; font-weight:800; font-size:0.8rem; letter-spacing:0.04em;">🟡 IN-BETWEEN STOPOVER</div>
+          <div style="color:#f59e0b; font-weight:800; font-size:0.8rem; letter-spacing:0.04em;">${dotWarn} IN-BETWEEN STOPOVER</div>
           <div style="font-size:1.05rem; font-weight:700; margin:4px 0 2px;">${stop.location}</div>
           <div style="font-size:0.8rem; color:#475569;">Allocated Time: <strong>${stayText}</strong></div>
         </div>
@@ -2179,7 +2260,7 @@ function renderMap(variant) {
       .addTo(routeLayerGroup);
   });
 
-  // 3. Plot Destination Marker (🔴)
+  // 3. Plot Destination Marker (${dotAlarm})
   const destName = currentPlan.input_params.destination;
   let destCoords = null;
   if (variant.corridor_geometry && variant.corridor_geometry.length > 0) {
@@ -2200,14 +2281,14 @@ function renderMap(variant) {
   })
     .bindPopup(`
       <div style="font-family:sans-serif; min-width:160px;">
-        <div style="color:#ef4444; font-weight:800; font-size:0.8rem; letter-spacing:0.04em;">🔴 FINAL DESTINATION</div>
+        <div style="color:#ef4444; font-weight:800; font-size:0.8rem; letter-spacing:0.04em;">${dotAlarm} FINAL DESTINATION</div>
         <div style="font-size:1.05rem; font-weight:700; margin:4px 0 2px;">${destName}</div>
         <div style="font-size:0.8rem; color:#475569;">Trip Deadline: <strong>${currentPlan.input_params.end_date}</strong></div>
       </div>
     `)
     .addTo(routeLayerGroup);
 
-  // 4. Plot Sightseeing Attractions (🔵)
+  // 4. Plot Sightseeing Attractions
   variant.days.forEach((d) => {
     d.activities.forEach((act) => {
       if (act.place.coords) {
@@ -2225,7 +2306,7 @@ function renderMap(variant) {
         })
           .bindPopup(`
             <div style="font-family:sans-serif;">
-              <div style="color:#3b82f6; font-weight:700; font-size:0.82rem;">🏛️ ${act.place.location} Attraction</div>
+              <div style="color:#3b82f6; font-weight:700; font-size:0.82rem;">${I.landmark} ${act.place.location} Attraction</div>
               <div style="font-size:0.95rem; font-weight:700; margin:2px 0;">${act.place.name}</div>
               <div style="font-size:0.8rem; color:#334155;">Time: <strong>${act.start_time} - ${act.end_time}</strong> (${act.duration_mins}m)</div>
               <div style="font-size:0.8rem; color:#334155;">Hours: ${act.place.opening_time} - ${act.place.closing_time}</div>
@@ -2266,7 +2347,7 @@ function renderMap(variant) {
 
   // 5.5. Render Multi-Modal Interactive Transport Badges along each Leg
   const routeLegs = (currentPlan && currentPlan.route && currentPlan.route.legs) ? currentPlan.route.legs : [];
-  const mapModeIcons = { train: "🚆", bus: "🚌", driving: "🚗", shared_cab: "🛺" };
+  const mapModeIcons = { train: I.train, bus: I.bus, driving: I.car, shared_cab: I.cab };
   const mapModeTitles = { train: "Express Train", bus: "Highway Bus", driving: "Self-Drive Car", shared_cab: "Shared Cab" };
 
   routeLegs.forEach((leg, lIdx) => {
@@ -2284,7 +2365,7 @@ function renderMap(variant) {
 
     if (midCoord) {
       allPlotPoints.push(midCoord);
-      const icon = mapModeIcons[leg.selected_mode] || "🚗";
+      const icon = mapModeIcons[leg.selected_mode] || I.car;
       const modeName = mapModeTitles[leg.selected_mode] || leg.selected_mode;
 
       const badgeDiv = L.divIcon({
@@ -2296,19 +2377,19 @@ function renderMap(variant) {
       });
 
       const hubsContent = leg.departure_hub
-        ? `<div class="transit-popup-hubs">🚉 <strong>Hubs:</strong> ${leg.departure_hub} ➔ ${leg.arrival_hub}</div>`
+        ? `<div class="transit-popup-hubs">${I.station} <strong>Hubs:</strong> ${leg.departure_hub} ➔ ${leg.arrival_hub}</div>`
         : "";
 
       const ticketsContent = leg.ticket_cost > 0
-        ? `<div>🎟️ <strong>Intercity Tickets:</strong> ₹${leg.ticket_cost.toLocaleString()}</div>`
+        ? `<div>${I.ticket} <strong>Intercity Tickets:</strong> ₹${leg.ticket_cost.toLocaleString()}</div>`
         : "";
 
       const feederContent = leg.local_transit_cost > 0
-        ? `<div>🛺 <strong>Local Feeder (${leg.local_vehicle_type || 'Shared Auto'}):</strong> ₹${leg.local_transit_cost.toLocaleString()}</div>`
+        ? `<div>${I.cab} <strong>Local Feeder (${leg.local_vehicle_type || 'Shared Auto'}):</strong> ₹${leg.local_transit_cost.toLocaleString()}</div>`
         : "";
 
       const trainPopupContent = (leg.selected_mode === 'train' && leg.train_number)
-        ? `<div style="margin-top:4px; padding:4px 8px; background:#dcfce7; border-radius:4px; color:#166534; font-size:0.75rem;">🚆 <strong>Train #${leg.train_number}:</strong> ${leg.train_name || ''}<br/>⏰ Dep: <strong>${leg.departure_time || '--:--'}</strong> ➔ Arr: <strong>${leg.arrival_time || '--:--'}</strong></div>`
+        ? `<div style="margin-top:4px; padding:4px 8px; background:#dcfce7; border-radius:4px; color:#166534; font-size:0.75rem;">${I.train} <strong>Train #${leg.train_number}:</strong> ${leg.train_name || ''}<br/>${I.clock} Dep: <strong>${leg.departure_time || '--:--'}</strong> ➔ Arr: <strong>${leg.arrival_time || '--:--'}</strong></div>`
         : "";
 
       const marker = L.marker(midCoord, { icon: badgeDiv }).bindPopup(`
@@ -2342,7 +2423,7 @@ function renderMap(variant) {
         (destCoords[1] + originCoords[1]) / 2 + 0.08
       ];
       allPlotPoints.push(returnMid);
-      const retIcon = mapModeIcons[retTransit.mode] || "🚗";
+      const retIcon = mapModeIcons[retTransit.mode] || I.car;
       const retName = mapModeTitles[retTransit.mode] || retTransit.mode;
 
       const retBadgeDiv = L.divIcon({
@@ -2354,26 +2435,26 @@ function renderMap(variant) {
       });
 
       const retHubs = retTransit.departure_hub
-        ? `<div class="transit-popup-hubs">🚉 <strong>Hubs:</strong> ${retTransit.departure_hub} ➔ ${retTransit.arrival_hub}</div>`
+        ? `<div class="transit-popup-hubs">${I.station} <strong>Hubs:</strong> ${retTransit.departure_hub} ➔ ${retTransit.arrival_hub}</div>`
         : "";
 
       const retTickets = retTransit.ticket_cost > 0
-        ? `<div>🎟️ <strong>Return Tickets:</strong> ₹${retTransit.ticket_cost.toLocaleString()}</div>`
+        ? `<div>${I.ticket} <strong>Return Tickets:</strong> ₹${retTransit.ticket_cost.toLocaleString()}</div>`
         : "";
 
       const retFeeder = retTransit.local_transit_cost > 0
-        ? `<div>🛺 <strong>Shared Auto Feeder:</strong> ₹${retTransit.local_transit_cost.toLocaleString()}</div>`
+        ? `<div>${I.cab} <strong>Shared Auto Feeder:</strong> ₹${retTransit.local_transit_cost.toLocaleString()}</div>`
         : "";
 
       const retTrainPopup = (retTransit.mode === 'train' && retTransit.train_number)
-        ? `<div style="margin-top:4px; padding:4px 8px; background:#dcfce7; border-radius:4px; color:#166534; font-size:0.75rem;">🚆 <strong>Train #${retTransit.train_number}:</strong> ${retTransit.train_name || ''}<br/>⏰ Dep: <strong>${retTransit.departure_time || '--:--'}</strong> ➔ Arr: <strong>${retTransit.arrival_time || '--:--'}</strong></div>`
+        ? `<div style="margin-top:4px; padding:4px 8px; background:#dcfce7; border-radius:4px; color:#166534; font-size:0.75rem;">${I.train} <strong>Train #${retTransit.train_number}:</strong> ${retTransit.train_name || ''}<br/>${I.clock} Dep: <strong>${retTransit.departure_time || '--:--'}</strong> ➔ Arr: <strong>${retTransit.arrival_time || '--:--'}</strong></div>`
         : "";
 
       const retMarker = L.marker(returnMid, { icon: retBadgeDiv }).bindPopup(`
         <div class="transit-popup-card">
           <div class="transit-popup-header">
             <span style="font-size:1.2rem;">${retIcon}</span>
-            <span>🔄 Return: ${destName} ➔ ${origName}</span>
+            <span>${I.swap} Return: ${destName} ➔ ${origName}</span>
           </div>
           <div class="transit-popup-meta">Mode: <strong>${retName}</strong> &bull; ${retTransit.distance_km} km &bull; ~${retTransit.duration_hours} hrs</div>
           ${retHubs}
@@ -2433,23 +2514,23 @@ function renderBudgetAudit(variant) {
 
     <div class="cost-breakdown-grid">
       <div class="cost-tile">
-        <span class="title">🚗 Total Transport</span>
+        <span class="title">${I.car} Total Transport</span>
         <span class="amount">₹${(cost.transport || 0).toLocaleString()}</span>
       </div>
       <div class="cost-tile">
-        <span class="title">🏨 Stays</span>
+        <span class="title">${I.hotel} Stays</span>
         <span class="amount">₹${(cost.stays || 0).toLocaleString()}</span>
       </div>
       <div class="cost-tile">
-        <span class="title">🍲 Food & Dhabas</span>
+        <span class="title">${I.dining} Food & Dhabas</span>
         <span class="amount">₹${(cost.food || 0).toLocaleString()}</span>
       </div>
       <div class="cost-tile">
-        <span class="title">🎟️ Sight Tickets</span>
+        <span class="title">${I.ticket} Sight Tickets</span>
         <span class="amount">₹${(cost.activities || 0).toLocaleString()}</span>
       </div>
       <div class="cost-tile">
-        <span class="title">🛡️ Buffer Reserve</span>
+        <span class="title">${I.shield} Buffer Reserve</span>
         <span class="amount">₹${(cost.buffer_reserve || 0).toLocaleString()}</span>
       </div>
     </div>
@@ -2465,21 +2546,21 @@ function renderBudgetAudit(variant) {
       </div>
       <div class="subbreakdown-grid">
         <div class="subbreakdown-item">
-          <span class="sub-icon">🎟️</span>
+          <span class="sub-icon">${I.ticket}</span>
           <div class="sub-info">
             <span class="sub-label">Intercity Rail / Bus Tickets</span>
             <span class="sub-amount">₹${ticketCost.toLocaleString()}</span>
           </div>
         </div>
         <div class="subbreakdown-item">
-          <span class="sub-icon">🛺</span>
+          <span class="sub-icon">${I.cab}</span>
           <div class="sub-info">
             <span class="sub-label">Local Shared Vehicles (Autos & Feeder Cabs)</span>
             <span class="sub-amount">₹${localSharedCost.toLocaleString()}</span>
           </div>
         </div>
         <div class="subbreakdown-item">
-          <span class="sub-icon">⛽</span>
+          <span class="sub-icon">${I.fuel}</span>
           <div class="sub-info">
             <span class="sub-label">Highway Fuel & Tolls (Driving Legs)</span>
             <span class="sub-amount">₹${fuelTollCost.toLocaleString()}</span>
@@ -2542,7 +2623,7 @@ function openBookingModal(itemType, itemId, itemName, dateOrTime, amount) {
     <div><strong>Date / Time Slot:</strong> ${dateOrTime}</div>
     <div><strong>Guests:</strong> ${pendingBooking.guests} person(s)</div>
     <div><strong>Estimated Payable:</strong> ₹${amount.toLocaleString()}</div>
-    <div style="font-size:0.78rem; color:#64748b; margin-top:8px;">Instant reservation simulated via SmartRoute Hospitality Engine.</div>
+    <div style="font-size:0.78rem; color:#64748b; margin-top:8px;">Instant reservation simulated by Safarana.</div>
   `;
 
   document.getElementById("bookingModal").style.display = "flex";
@@ -2563,7 +2644,7 @@ async function confirmPendingBooking() {
     });
     const data = await res.json();
     closeModal();
-    alert(`🎉 Booking Confirmed!\nConfirmation Code: ${data.confirmation_code}\nItem: ${data.item_name}`);
+    alert(`${I.check} Booking Confirmed!\nConfirmation Code: ${data.confirmation_code}\nItem: ${data.item_name}`);
     loadBookingsCount();
   } catch (err) {
     alert("Booking failed: " + err.message);
@@ -2634,7 +2715,7 @@ async function checkGoogleMapsStatus() {
       if (label) label.textContent = "Google Maps Live";
       if (banner) {
         banner.className = "maps-key-status-banner banner-active";
-        banner.innerHTML = "✅ <strong>Google Maps Live:</strong> Directions & Routes API active for real-time fares and routes.";
+        banner.innerHTML = "${I.check} <strong>Google Maps Live:</strong> Directions & Routes API active for real-time fares and routes.";
       }
       if (help) help.style.display = "none";
     } else if (data.key_configured) {
@@ -2642,7 +2723,7 @@ async function checkGoogleMapsStatus() {
       if (label) label.textContent = "Google Maps (Key Set)";
       if (banner) {
         banner.className = "maps-key-status-banner banner-pending";
-        banner.innerHTML = `⚠️ <strong>Key Configured:</strong> Routes / Directions API needs activation in your Google Cloud Console.<br><span style="font-size:0.75rem; color:#b45309;">${data.last_error || 'Enable Routes API to activate live fares'}</span>`;
+        banner.innerHTML = `${I.alert} <strong>Key Configured:</strong> Routes / Directions API needs activation in your Google Cloud Console.<br><span style="font-size:0.75rem; color:#b45309;">${data.last_error || 'Enable Routes API to activate live fares'}</span>`;
       }
       if (help) help.style.display = "block";
     } else {
@@ -2650,7 +2731,7 @@ async function checkGoogleMapsStatus() {
       if (label) label.textContent = "Setup Google Maps";
       if (banner) {
         banner.className = "maps-key-status-banner banner-inactive";
-        banner.innerHTML = "ℹ️ <strong>No Key Configured:</strong> Using calibrated Indian transit fare & routing engine.";
+        banner.innerHTML = "${I.info} <strong>No Key Configured:</strong> Using calibrated Indian transit fare & routing engine.";
       }
       if (help) help.style.display = "none";
     }
@@ -2699,8 +2780,8 @@ async function openTrainTimetableModal(trainNumber, trainName) {
   const title = document.getElementById("timetableModalTitle");
   const body = document.getElementById("timetableModalBody");
 
-  title.innerHTML = `🚆 Timetable & Actual Halts: #${trainNumber} ${trainName || ''}`;
-  body.innerHTML = `<div style="text-align:center; padding:30px; color:#64748b;">⏳ Fetching live route and halts timetable from RailRadar API...</div>`;
+  title.innerHTML = `${I.train} Timetable & Actual Halts: #${trainNumber} ${trainName || ''}`;
+  body.innerHTML = `<div style="text-align:center; padding:30px; color:#64748b;">${I.timer} Fetching live route and halts timetable from RailRadar API...</div>`;
   modal.style.display = "flex";
 
   try {
@@ -2718,7 +2799,7 @@ async function openTrainTimetableModal(trainNumber, trainName) {
       if (seats.length > 0) {
         seatsHtml = `
           <div class="timetable-seats-summary" style="margin-bottom:12px; background:#f1f5f9; padding:10px; border-radius:8px;">
-            <div style="font-size:0.8rem; font-weight:700; color:#334155; margin-bottom:6px;">💺 Real-Time Seat Status & Confirmed Ticket Chance (RailRadar):</div>
+            <div style="font-size:0.8rem; font-weight:700; color:#334155; margin-bottom:6px;">${I.seat} Real-Time Seat Status & Confirmed Ticket Chance (RailRadar):</div>
             <div style="display:flex; flex-wrap:wrap; gap:6px;">
               ${seats.map(s => `
                 <span class="seat-badge ${s.badge}" style="font-size:0.8rem; padding:4px 10px;">

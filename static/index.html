@@ -3,59 +3,74 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SmartRoute — AI Multi-Agent Trip Planner</title>
+  <title>Safarana — Craft Every Journey</title>
+  <meta name="description" content="Safarana plans your travels: routes, stays, meals and sights, timed just right." />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23d97706'/%3E%3Cpath d='M9 15l3-9 3 9' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M7 17h10' stroke='white' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Mulish:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+  <!-- Ambient drifting gradient orbs -->
+  <div class="bg-orbs" aria-hidden="true">
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+    <div class="bg-orb orb-3"></div>
+  </div>
+
   <!-- Header / Navigation Bar -->
   <header class="navbar">
     <div class="nav-brand">
       <div class="logo-icon">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+        <svg class="logo-needle" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 3 9.6 10.6a3.2 3.2 0 1 0 4.8 0L12 3Z"></path>
         </svg>
       </div>
       <div>
-        <div class="brand-title">SmartRoute <span class="badge-ai">AI Multi-Agent</span></div>
-        <div class="brand-sub">Constraint-Solving Trip Engine &bull; Budget &bull; Time &bull; Open Hours &bull; Buffers</div>
+        <div class="brand-title">Safarana</div>
+        <div class="brand-sub">Roads, stays & flavours &mdash; crafted for your journey</div>
       </div>
     </div>
+    <div class="nav-actions">
+      <button type="button" class="theme-toggle" id="themeToggleBtn" title="Switch light / dark theme" aria-label="Toggle theme">
+        <svg class="s-icon" id="themeIconLight" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+        <svg class="s-icon" id="themeIconDark" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>
+      </button>
       <button class="btn-secondary gmaps-status-btn" id="openMapsKeyBtn" title="Google Maps Routing & Transit Fares Engine">
         <span class="gmaps-indicator-dot" id="mapsIndicatorDot"></span>
         <span id="mapsStatusLabel">Google Maps</span>
       </button>
       <button class="btn-secondary" id="newTripBtn" title="Reset form and select new custom origin and destination">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>
+        <svg class="s-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>
         Reset Route
       </button>
       <button class="btn-secondary" id="openBookingsBtn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-        My Bookings (<span id="bookingCount">0</span>)
+        <svg class="s-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        My Trips (<span id="bookingCount">0</span>)
       </button>
     </div>
   </header>
 
   <!-- Main Application Layout -->
   <div class="app-layout">
-    <!-- Left Sidebar: Configuration & Constraints -->
+    <!-- Left Sidebar: Journey Builder -->
     <aside class="sidebar">
       <div class="sidebar-card">
         <h3 class="sidebar-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
-          Custom Trip Builder
+          <svg class="s-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+          Your Journey, Your Way
         </h3>
 
         <form id="tripForm">
-          <!-- Modern Route & Waypoints Builder Card -->
+          <!-- Route & Waypoints Builder -->
           <div class="route-builder-card" id="routeBuilderCard">
             <div class="route-card-header">
               <div class="route-card-title">
                 <span class="route-pulse-dot"></span>
-                <span>Route & Multi-Stop Waypoints</span>
+                <span>Route &amp; Stopovers</span>
               </div>
               <div class="deadline-pill" id="deadlinePill" title="Calculated from Start & End dates">
                 <span class="deadline-label">Trip Deadline:</span>
@@ -78,7 +93,7 @@
                     <label for="originInput">Origin (Start Base)</label>
                     <div class="node-actions">
                       <button type="button" class="btn-text-action" id="pickOriginMapBtn" title="Click on the Leaflet map to set Origin">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        <svg class="s-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>
                         Map Pick
                       </button>
                     </div>
@@ -102,13 +117,12 @@
               <!-- Add In-Between Stop Button & Suggested Corridor Chips -->
               <div class="route-waypoint-actions">
                 <button type="button" id="addStopoverBtn" class="btn-add-stopover">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                  <span>+ Add In-Between Place / Stop</span>
+                  <svg class="s-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  <span>Add a stop in between</span>
                 </button>
                 <div class="corridor-suggestions" id="corridorSuggestions">
-                  <span class="suggestion-label">Suggested En-Route:</span>
+                  <span class="suggestion-label">Suggested en-route:</span>
                   <div class="suggestion-chips" id="suggestionChips">
-                    <!-- Populated dynamically based on corridor -->
                     <button type="button" class="chip-suggestion" data-city="Neemrana">+ Neemrana</button>
                     <button type="button" class="chip-suggestion" data-city="Behror">+ Behror</button>
                     <button type="button" class="chip-suggestion" data-city="Alwar">+ Alwar</button>
@@ -119,7 +133,7 @@
               <!-- Reverse Route / Swap Button -->
               <div class="swap-divider">
                 <button type="button" id="swapLocationsBtn" class="btn-swap" title="Reverse Route (Swap Origin & Destination)">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l4-4m-4 4l-4-4"></path></svg>
+                  <svg class="s-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 4v12m0 0l4-4m-4 4l-4-4"></path></svg>
                 </button>
               </div>
 
@@ -133,7 +147,7 @@
                     <label for="destinationInput">Destination (Final Target)</label>
                     <div class="node-actions">
                       <button type="button" class="btn-text-action" id="pickDestMapBtn" title="Click on the Leaflet map to set Destination">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        <svg class="s-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>
                         Map Pick
                       </button>
                     </div>
@@ -150,69 +164,84 @@
                     <button type="button" class="city-chip" data-target="destination" data-city="Udaipur">Udaipur</button>
                   </div>
 
-                  <!-- Interactive Spot Selection Panel for Destination -->
+                  <!-- Place Selection Panel for Destination -->
                   <div class="spot-picker-container" id="destSpotPicker">
                     <button type="button" class="spot-picker-toggle" id="destSpotPickerToggle">
                       <span class="spot-picker-toggle-left">
-                        <span class="spot-picker-icon">🏛️</span>
-                        <span>Select Places to Visit in <strong id="destSpotPickerCityName">Jaipur</strong></span>
+                        <span class="spot-picker-icon">
+                          <svg class="s-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" x2="21" y1="22" y2="22"></line><line x1="6" x2="6" y1="18" y2="11"></line><line x1="10" x2="10" y1="18" y2="11"></line><line x1="14" x2="14" y1="18" y2="11"></line><line x1="18" x2="18" y1="18" y2="11"></line><polygon points="12 2 20 7 4 7"></polygon></svg>
+                        </span>
+                        <span>Places to visit in <strong id="destSpotPickerCityName">Jaipur</strong></span>
                         <span class="spot-picker-count-badge" id="destSpotSelectedBadge">0 Selected</span>
                       </span>
                       <svg class="spot-picker-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                     </button>
                     <div class="spot-picker-body" id="destSpotPickerBody" style="display: none;">
                       <div class="spot-picker-sub">
-                        <span>Extracted from <strong>OpenStreetMap / Overpass & OpenTripMap</strong></span>
-                        <button type="button" class="btn-refresh-spots" id="destRefreshSpotsBtn" title="Refresh places">🔄 Refresh</button>
+                        <span>Curated from <strong>OpenStreetMap &amp; OpenTripMap</strong></span>
+                        <button type="button" class="btn-refresh-spots" id="destRefreshSpotsBtn" title="Refresh places">
+                          <svg class="s-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>
+                          Refresh
+                        </button>
                       </div>
-                      <div class="genre-filter-bar" id="destGenreFilters">
-                        <!-- Populated dynamically -->
-                      </div>
+                      <div class="genre-filter-bar" id="destGenreFilters"></div>
                       <div class="spot-selection-list" id="destSpotsList">
                         <div class="spots-loading-hint">Loading places...</div>
                       </div>
                     </div>
-                  <!-- Interactive Hotel Selection Panel for Destination -->
+                  </div>
+
+                  <!-- Stay Selection Panel for Destination -->
                   <div class="stay-picker-container" id="destStayPicker" style="margin-top: 8px;">
                     <button type="button" class="stay-picker-toggle" id="destStayPickerToggle">
                       <span class="spot-picker-toggle-left">
-                        <span class="spot-picker-icon">🏨</span>
-                        <span>Choose Stay in <strong id="destStayPickerCityName">Jaipur</strong></span>
+                        <span class="spot-picker-icon">
+                          <svg class="s-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20v-8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v8"></path><path d="M4 10V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"></path><path d="M12 4v6"></path><path d="M2 18h20"></path></svg>
+                        </span>
+                        <span>Choose stay in <strong id="destStayPickerCityName">Jaipur</strong></span>
                         <span class="spot-picker-count-badge" id="destStaySelectedBadge">Auto-picked</span>
                       </span>
                       <svg class="spot-picker-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                     </button>
-                    <div class="stay-picker-body" id="destStayPickerBody" style="display: none;">
+                    <div class="stay-picker-body spot-picker-body" id="destStayPickerBody" style="display: none;">
                       <div class="spot-picker-sub">
-                        <span>Extracted from <strong>StayingAPI, Google Places & OSM</strong></span>
-                        <button type="button" class="btn-refresh-spots" id="destRefreshStayBtn" title="Refresh hotels">🔄 Refresh</button>
+                        <span>Curated from <strong>StayingAPI, Google Places &amp; OSM</strong></span>
+                        <button type="button" class="btn-refresh-spots" id="destRefreshStayBtn" title="Refresh stays">
+                          <svg class="s-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>
+                          Refresh
+                        </button>
                       </div>
                       <div class="genre-filter-bar" id="destStayFilters">
-                        <button type="button" class="genre-filter-chip active" data-stay-tier="all">All Tiers</button>
+                        <button type="button" class="genre-filter-chip active" data-stay-tier="all">All Stays</button>
                         <button type="button" class="genre-filter-chip" data-stay-tier="standard_hotel">Standard 3-Star</button>
                         <button type="button" class="genre-filter-chip" data-stay-tier="budget_hostel">Budget / Hostel</button>
                         <button type="button" class="genre-filter-chip" data-stay-tier="boutique_resort">Boutique Resort</button>
                       </div>
                       <div class="stay-selection-list" id="destStaysList">
-                        <div class="spots-loading-hint">Loading accommodations...</div>
+                        <div class="spots-loading-hint">Loading stays...</div>
                       </div>
                     </div>
                   </div>
 
-                  <!-- Interactive Dining Selection Panel for Destination -->
+                  <!-- Dining Selection Panel for Destination -->
                   <div class="dining-picker-container" id="destDiningPicker" style="margin-top: 8px;">
                     <button type="button" class="dining-picker-toggle" id="destDiningPickerToggle">
                       <span class="spot-picker-toggle-left">
-                        <span class="spot-picker-icon">🍲</span>
-                        <span>Choose Food & Dhabas in <strong id="destDiningPickerCityName">Jaipur</strong></span>
+                        <span class="spot-picker-icon">
+                          <svg class="s-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path><path d="M7 2v20"></path><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path></svg>
+                        </span>
+                        <span>Food &amp; dhabas in <strong id="destDiningPickerCityName">Jaipur</strong></span>
                         <span class="spot-picker-count-badge" id="destDiningSelectedBadge">0 Selected</span>
                       </span>
                       <svg class="spot-picker-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                     </button>
-                    <div class="dining-picker-body" id="destDiningPickerBody" style="display: none;">
+                    <div class="dining-picker-body spot-picker-body" id="destDiningPickerBody" style="display: none;">
                       <div class="spot-picker-sub">
-                        <span>Extracted from <strong>Google Places, OSM & Highway Dhabas</strong></span>
-                        <button type="button" class="btn-refresh-spots" id="destRefreshDiningBtn" title="Refresh food spots">🔄 Refresh</button>
+                        <span>Curated from <strong>Google Places, OSM &amp; Highway Dhabas</strong></span>
+                        <button type="button" class="btn-refresh-spots" id="destRefreshDiningBtn" title="Refresh food spots">
+                          <svg class="s-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>
+                          Refresh
+                        </button>
                       </div>
                       <div class="genre-filter-bar" id="destDiningFilters">
                         <button type="button" class="genre-filter-chip active" data-cuisine="all">All Food</button>
@@ -221,7 +250,7 @@
                         <button type="button" class="genre-filter-chip" data-cuisine="vegetarian">Pure Veg</button>
                       </div>
                       <div class="dining-selection-list" id="destDiningList">
-                        <div class="spots-loading-hint">Loading food places...</div>
+                        <div class="spots-loading-hint">Loading food spots...</div>
                       </div>
                     </div>
                   </div>
@@ -229,28 +258,24 @@
               </div>
             </div>
 
-            <!-- Dynamic Multi-Modal Segment Transport Choice List -->
+            <!-- Multi-Modal Segment Transport Choice List -->
             <div class="leg-modes-container" id="legModesContainer">
               <div class="leg-modes-header">
                 <div class="leg-modes-title">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
-                  <span>Multi-Modal Segment Transport</span>
+                  <svg class="s-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                  <span>How you travel, leg by leg</span>
                 </div>
-                <span class="leg-modes-sub">Customize transport per leg with live time, fares & delays</span>
+                <span class="leg-modes-sub">Pick a ride per stretch &mdash; fares, timings &amp; live delays included</span>
               </div>
-              <div id="legSelectorsList" class="leg-selectors-list">
-                <!-- Dynamically rendered per-leg comparison cards -->
-              </div>
-              <div id="returnLegContainer" class="return-leg-container">
-                <!-- Dedicated Return Leg Mode Selector Card -->
-              </div>
+              <div id="legSelectorsList" class="leg-selectors-list"></div>
+              <div id="returnLegContainer" class="return-leg-container"></div>
             </div>
           </div>
 
           <!-- Dynamic Datalist for Cities -->
           <datalist id="citiesList"></datalist>
 
-          <!-- Dates & Start Time -->
+          <!-- Dates -->
           <div class="form-row">
             <div class="form-group">
               <label>Start Date</label>
@@ -284,11 +309,11 @@
             <div class="form-group">
               <label>Default Travel Mode</label>
               <select id="travelModeInput">
-                <option value="driving" selected>🚗 Road Trip / Self-Drive Car</option>
-                <option value="train">🚆 Intercity Express Train</option>
-                <option value="flight">✈️ Commercial Domestic Flight</option>
-                <option value="bus">🚌 Highway Express Bus</option>
-                <option value="shared_cab">🛺 Shared Outstation Cab</option>
+                <option value="driving" selected>Road Trip / Self-Drive Car</option>
+                <option value="train">Intercity Express Train</option>
+                <option value="flight">Commercial Domestic Flight</option>
+                <option value="bus">Highway Express Bus</option>
+                <option value="shared_cab">Shared Outstation Cab</option>
               </select>
             </div>
             <div class="form-group">
@@ -301,81 +326,94 @@
           <div class="form-group">
             <label>Stay Preference</label>
             <select id="stayPrefInput">
-              <option value="standard_hotel" selected>Standard Heritage / 3-Star Hotel</option>
+              <option value="standard_hotel" selected>Heritage / 3-Star Hotel</option>
               <option value="budget_hostel">Backpacker Hostel / Highway Lodge</option>
-              <option value="boutique_resort">Boutique Resort / Haveli Retreat</option>
+              <option value="boutique_resort">Boutique Resort / Haveli</option>
             </select>
           </div>
 
           <div class="form-group">
-            <label>Food & Dining Preference</label>
+            <label>Food &amp; Dining Preference</label>
             <select id="foodPrefInput">
-              <option value="roadside_dhaba" selected>Authentic Roadside Dhabas (Parathas & Chai)</option>
-              <option value="local_cuisine">Local Regional Specialties & Thalis</option>
-              <option value="vegetarian">Pure Vegetarian & Sweets</option>
-              <option value="cafe">Himalayan Café & Brew Stops</option>
-              <option value="fine_dining">Fine Dining & Royal Heritage</option>
+              <option value="roadside_dhaba" selected>Authentic Roadside Dhabas (Parathas &amp; Chai)</option>
+              <option value="local_cuisine">Local Regional Specialties &amp; Thalis</option>
+              <option value="vegetarian">Pure Vegetarian &amp; Sweets</option>
+              <option value="cafe">Himalayan Café &amp; Brew Stops</option>
+              <option value="fine_dining">Fine Dining &amp; Royal Heritage</option>
               <option value="all">All Cuisine Mix</option>
             </select>
           </div>
 
           <!-- Interests -->
           <div class="form-group">
-            <label>Interests & Themes</label>
+            <label>What you love</label>
             <div class="interests-grid">
-              <label class="chip"><input type="checkbox" name="interests" value="heritage" checked /> <span>🏛️ Heritage</span></label>
-              <label class="chip"><input type="checkbox" name="interests" value="food" checked /> <span>🍲 Food Trail</span></label>
-              <label class="chip"><input type="checkbox" name="interests" value="scenic" checked /> <span>🌄 Viewpoints</span></label>
-              <label class="chip"><input type="checkbox" name="interests" value="nature" /> <span>🌿 Nature</span></label>
-              <label class="chip"><input type="checkbox" name="interests" value="religious" /> <span>🕉️ Spiritual Sites</span></label>
-              <label class="chip"><input type="checkbox" name="interests" value="relaxation" /> <span>☕ Leisure</span></label>
-              <label class="chip"><input type="checkbox" name="interests" value="shopping" /> <span>🛍️ Bazaars</span></label>
+              <label class="chip"><input type="checkbox" name="interests" value="heritage" checked />
+                <svg class="s-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" x2="21" y1="22" y2="22"></line><line x1="6" x2="6" y1="18" y2="11"></line><line x1="10" x2="10" y1="18" y2="11"></line><line x1="14" x2="14" y1="18" y2="11"></line><line x1="18" x2="18" y1="18" y2="11"></line><polygon points="12 2 20 7 4 7"></polygon></svg>
+                Heritage</label>
+              <label class="chip"><input type="checkbox" name="interests" value="food" checked />
+                <svg class="s-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"></path><path d="M7 2v20"></path><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"></path></svg>
+                Food Trail</label>
+              <label class="chip"><input type="checkbox" name="interests" value="scenic" checked />
+                <svg class="s-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 3 4 8 5-5 5 15H2L8 3z"></path></svg>
+                Viewpoints</label>
+              <label class="chip"><input type="checkbox" name="interests" value="nature" />
+                <svg class="s-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"></path><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"></path></svg>
+                Nature</label>
+              <label class="chip"><input type="checkbox" name="interests" value="religious" />
+                <svg class="s-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v8"></path><path d="m4.93 10.93 1.41 1.41"></path><path d="M2 18h2"></path><path d="M20 18h2"></path><path d="m19.07 10.93-1.41 1.41"></path><path d="M22 22H2"></path><path d="m8 6 4-4 4 4"></path><path d="M16 18a4 4 0 0 0-8 0"></path></svg>
+                Spiritual Sites</label>
+              <label class="chip"><input type="checkbox" name="interests" value="relaxation" />
+                <svg class="s-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2v2"></path><path d="M14 2v2"></path><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"></path><path d="M6 2v2"></path></svg>
+                Leisure</label>
+              <label class="chip"><input type="checkbox" name="interests" value="shopping" />
+                <svg class="s-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path><path d="M3 6h18"></path><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
+                Bazaars</label>
             </div>
           </div>
 
           <!-- Submit Button -->
           <button type="submit" class="btn-primary" id="planSubmitBtn">
-            <span class="btn-text">Generate Optimized Itineraries</span>
+            <span class="btn-text">Craft my itinerary</span>
             <span class="btn-spinner" style="display:none;"></span>
           </button>
         </form>
       </div>
 
-      <!-- Quick Constraint Summary Card -->
+      <!-- Journey Policies Card -->
       <div class="sidebar-card info-card">
-        <h4>The 4 Hard Constraints Solved:</h4>
+        <h4>Comfort, looked after:</h4>
         <ul class="constraint-checklist">
-          <li><strong>Budget:</strong> Transport + Stays + Meals + Tickets &le; Budget</li>
-          <li><strong>Time Window:</strong> Max 8h driving/day & arrival deadlines</li>
-          <li><strong>Operating Hours:</strong> Synchronized with real open/close times</li>
-          <li><strong>Delays & Buffers:</strong> +18% traffic buffer & 25m transition window</li>
+          <li><strong>Budget:</strong> Transport + stays + meals + tickets within your budget</li>
+          <li><strong>Pace:</strong> At most 8h driving daily &amp; timely arrivals</li>
+          <li><strong>Open windows:</strong> Everything timed to real opening hours</li>
+          <li><strong>Grace:</strong> Traffic buffers &amp; relaxed transition windows</li>
         </ul>
       </div>
     </aside>
 
     <!-- Right Workspace: Itineraries, Map, Timeline, Trace -->
     <main class="main-content">
-      <!-- Pareto Variant Selector Tabs -->
+      <!-- Journey Style Selector -->
       <div class="pareto-container" id="paretoContainer">
         <div class="pareto-header">
-          <h3>Pareto-Optimal Itineraries</h3>
-          <span class="pareto-tag">Multi-Objective Frontier &bull; Choose your travel style</span>
+          <h3>Pick Your Journey Style</h3>
+          <span class="pareto-tag">Four ways to travel &mdash; choose what feels right</span>
         </div>
         <div class="variant-cards" id="variantCards">
-          <!-- Dynamically populated variant cards -->
           <div class="variant-card active" data-variant="balanced">
             <div class="v-badge">Recommended</div>
-            <h4>Balanced & Curated</h4>
+            <h4>Balanced &amp; Curated</h4>
             <div class="v-price">₹14,280 <span class="v-party">/ 2 people</span></div>
             <div class="v-score">★ 9.4 Score</div>
-            <div class="v-desc">Harmonious mix of heritage, highway dhabas, comfortable stays & buffers.</div>
+            <div class="v-desc">Harmonious mix of heritage, highway dhabas, comfortable stays &amp; buffers.</div>
           </div>
           <div class="variant-card" data-variant="fastest">
-            <div class="v-badge v-fast">Direct Express</div>
+            <div class="v-badge v-fast">Direct &amp; Quick</div>
             <h4>Fastest / Direct</h4>
             <div class="v-price">₹12,450</div>
             <div class="v-score">★ 8.8 Score</div>
-            <div class="v-desc">Minimizes highway pauses, highlights crown sights with rapid transitions.</div>
+            <div class="v-desc">Minimises highway pauses, highlights crown sights with rapid transitions.</div>
           </div>
           <div class="variant-card" data-variant="cheapest">
             <div class="v-badge v-cheap">Max Savings</div>
@@ -386,7 +424,7 @@
           </div>
           <div class="variant-card" data-variant="scenic">
             <div class="v-badge v-scenic">Deep Immersion</div>
-            <h4>Scenic & Explorer</h4>
+            <h4>Scenic &amp; Explorer</h4>
             <div class="v-price">₹18,500</div>
             <div class="v-score">★ 9.2 Score</div>
             <div class="v-desc">Maximum sightseeing density, boutique haveli stay, sunset viewpoints.</div>
@@ -394,39 +432,39 @@
         </div>
       </div>
 
-      <!-- Main Navigation Tabs (Map & Overview, Timeline, Cost Audit, Agent Trace) -->
+      <!-- Main Navigation Tabs -->
       <div class="tabs-nav">
         <button class="tab-btn active" data-tab="tab-timeline">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
-          Day-by-Day Timeline
+          <svg class="s-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+          Day-by-Day Plan
         </button>
         <button class="tab-btn" data-tab="tab-map">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
-          Route & Map View
+          <svg class="s-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line></svg>
+          Route &amp; Map
         </button>
         <button class="tab-btn" data-tab="tab-budget">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-          Budget & Feasibility Gate
+          <svg class="s-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          Cost &amp; Budget
         </button>
         <button class="tab-btn" data-tab="tab-trace">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-          Live Agent-to-Agent Trace (<span id="traceBadgeCount">0</span>)
+          <svg class="s-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+          Planning Log (<span id="traceBadgeCount">0</span>)
         </button>
       </div>
 
       <!-- Tab Content Area -->
       <div class="tab-content-wrapper">
-        <!-- 1. Day-by-Day Timeline Tab -->
+        <!-- Day-by-Day Plan Tab -->
         <section id="tab-timeline" class="tab-panel active">
           <div class="timeline-controls">
             <div id="dayFilterContainer" class="day-pills"></div>
             <div class="timeline-actions">
               <button class="btn-action-sm" id="exportIcsBtn" title="Export as standard iCalendar file for Google/Apple Calendar">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                <svg class="s-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                 Export Calendar (.ics)
               </button>
               <button class="btn-action-sm" id="printTripBtn" title="Print or save PDF trip brief">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                <svg class="s-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                 Print Trip Brief
               </button>
             </div>
@@ -435,11 +473,14 @@
           <div class="itinerary-timeline" id="itineraryTimeline"></div>
         </section>
 
-        <!-- 2. Route Map Tab -->
+        <!-- Route Map Tab -->
         <section id="tab-map" class="tab-panel">
           <div class="map-container-box">
             <div id="mapPickerBanner" class="map-picker-banner" style="display: none;">
-              <span class="map-picker-text">📍 Click anywhere on the map to set <strong id="mapPickerTargetLabel">Origin</strong></span>
+              <span class="map-picker-text">
+                <svg class="s-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                Click on the map to set <strong id="mapPickerTargetLabel">Origin</strong>
+              </span>
               <button type="button" id="cancelMapPickerBtn" class="btn-picker-cancel">Cancel</button>
             </div>
             <div id="leafletMap"></div>
@@ -450,16 +491,16 @@
           </div>
         </section>
 
-        <!-- 3. Budget Feasibility Tab -->
+        <!-- Cost & Budget Tab -->
         <section id="tab-budget" class="tab-panel">
           <div class="budget-audit-card" id="budgetAuditCard"></div>
         </section>
 
-        <!-- 4. Agent Trace Tab -->
+        <!-- Planning Log Tab -->
         <section id="tab-trace" class="tab-panel">
           <div class="trace-header">
-            <h4>Multi-Agent Communication Log & Constraint Solver Loop</h4>
-            <p>Inspect real-time structured messages between Planner, Route, Spot, Food & Stay, Budget, and Scheduler agents.</p>
+            <h4>How Safarana planned your trip</h4>
+            <p>A transparent log of the route, spots, food, stays, budget and schedule decisions made for you.</p>
           </div>
           <div class="trace-stream" id="traceStream"></div>
         </section>
@@ -467,7 +508,7 @@
     </main>
   </div>
 
-  <!-- Booking Simulation Modal -->
+  <!-- Booking Modal -->
   <div class="modal-backdrop" id="bookingModal" style="display:none;">
     <div class="modal-card">
       <div class="modal-header">
@@ -477,16 +518,16 @@
       <div class="modal-body" id="bookingModalBody"></div>
       <div class="modal-footer">
         <button class="btn-secondary" id="cancelBookingBtn">Cancel</button>
-        <button class="btn-primary" id="confirmBookingBtn">Confirm & Issue Voucher</button>
+        <button class="btn-primary" id="confirmBookingBtn">Confirm &amp; Issue Voucher</button>
       </div>
     </div>
   </div>
 
-  <!-- Bookings Drawer Modal -->
+  <!-- My Trips Modal -->
   <div class="modal-backdrop" id="myBookingsModal" style="display:none;">
     <div class="modal-card wide">
       <div class="modal-header">
-        <h3>My Booked Reservations & Vouchers</h3>
+        <h3>My Trips &amp; Vouchers</h3>
         <button class="btn-close" id="closeBookingsModalBtn">&times;</button>
       </div>
       <div class="modal-body" id="myBookingsList"></div>
@@ -497,24 +538,25 @@
   <div class="modal-backdrop" id="mapsKeyModal" style="display:none;">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>🌐 Google Maps Routing & Fares Engine</h3>
+        <h3>
+          <svg class="s-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>
+          Google Maps Routing Engine
+        </h3>
         <button class="btn-close" id="closeMapsKeyModalBtn">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="maps-key-status-banner" id="mapsKeyStatusBanner">
-          Checking status...
-        </div>
-        <p class="settings-hint" style="font-size: 0.85rem; color: #475569; margin: 10px 0;">
-          Google Maps Directions & Routes APIs evaluate live traffic-aware travel times, road geometry, and public transit fares.
+        <div class="maps-key-status-banner" id="mapsKeyStatusBanner">Checking status...</div>
+        <p class="settings-hint" style="font-size: 0.85rem; margin: 10px 0;">
+          Google Maps Directions &amp; Routes APIs add live traffic-aware travel times, road geometry, and public transit fares.
         </p>
         <div class="form-group" style="margin-bottom: 12px;">
           <label for="inputGoogleMapsKey" style="font-size: 0.8rem; font-weight: 600;">Google Maps API Key</label>
           <input type="password" id="inputGoogleMapsKey" class="form-control" placeholder="AIzaSy..." value="" style="font-family: monospace;" />
         </div>
-        <div id="mapsKeyActivationHelp" style="display: none; margin-top: 10px; background: #fffbeb; border: 1px solid #fef3c7; padding: 10px; border-radius: 8px; font-size: 0.8rem; color: #92400e;">
-          ⚠️ <strong>Note:</strong> Ensure the <em>Routes API</em> or <em>Directions API</em> is enabled in your Google Cloud Console.
+        <div id="mapsKeyActivationHelp" style="display: none; margin-top: 10px; background: var(--warning-soft); border: 1px solid rgba(217, 119, 6, 0.4); padding: 10px; border-radius: 12px; font-size: 0.8rem; color: var(--warning);">
+          <strong>Note:</strong> Make sure the <em>Routes API</em> or <em>Directions API</em> is enabled in your Google Cloud Console.
           <div style="margin-top: 6px;">
-            <a href="https://console.developers.google.com/apis/library?filter=category:maps" target="_blank" style="color: #2563eb; font-weight: 600; text-decoration: underline;">Open Google Cloud Console Library ↗</a>
+            <a href="https://console.developers.google.com/apis/library?filter=category:maps" target="_blank" style="color: var(--info); font-weight: 700; text-decoration: underline;">Open Google Cloud Console Library &nearr;</a>
           </div>
         </div>
       </div>
@@ -525,11 +567,14 @@
     </div>
   </div>
 
-  <!-- Train Timetable & Actual Halts Modal -->
+  <!-- Train Timetable & Halts Modal -->
   <div class="modal-backdrop" id="trainTimetableModal" style="display:none;">
     <div class="modal-card wide">
       <div class="modal-header">
-        <h3 id="timetableModalTitle">🚆 Train Route Timetable & Halts</h3>
+        <h3 id="timetableModalTitle">
+          <svg class="s-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.1V7a4 4 0 0 0 8 0V3.1"></path><path d="m9 15-1-1"></path><path d="m15 15 1-1"></path><path d="M9 19c-2.8 0-5-2.2-5-5v-4a8 8 0 0 1 16 0v4c0 2.8-2.2 5-5 5Z"></path><path d="m8 19-2 3"></path><path d="m16 19 2 3"></path></svg>
+          Train Route Timetable &amp; Halts
+        </h3>
         <button class="btn-close" id="closeTimetableModalBtn">&times;</button>
       </div>
       <div class="modal-body" id="timetableModalBody" style="max-height: 65vh; overflow-y: auto;">
